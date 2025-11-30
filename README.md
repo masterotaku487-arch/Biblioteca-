@@ -118,7 +118,7 @@ docker-compose up -d
 
 **Admin:**
 - Usuário: `Masterotaku`
-- Senha: `adm123`
+- Senha: `******`
 
 ⚠️ **IMPORTANTE**: Altere a senha do admin após o primeiro login!
 

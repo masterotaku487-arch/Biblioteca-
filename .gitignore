@@ -62,4 +62,4 @@ Thumbs.db
 *.zip
 *.tar.gz
 backup/
-backups/
+backups/.env

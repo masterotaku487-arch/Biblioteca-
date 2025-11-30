@@ -1,0 +1,64 @@
+# fly.toml - Configuração para Fly.io
+app = "biblioteca-privada"
+primary_region = "gru"  # São Paulo (mude se preferir outra região)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Configurações básicas
+  STORAGE_MODE = "local"
+  UPLOAD_DIR = "/app/uploads"
+  CORS_ORIGINS = "*"
+  DB_NAME = "biblioteca"
+  
+  # Para S3, descomente e configure:
+  # STORAGE_MODE = "s3"
+  # S3_BUCKET = "seu-bucket"
+  # S3_REGION = "us-east-1"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/auth/me"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 250
+    soft_limit = 200
+
+# Volume para persistência de arquivos (recomendado!)
+[mounts]
+  source = "biblioteca_uploads"
+  destination = "/app/uploads"
+  initial_size = "10gb"  # Ajuste conforme necessário
+
+# Secrets (configure via CLI: fly secrets set)
+# fly secrets set SECRET_KEY=sua-chave-aqui
+# fly secrets set MONGO_URL=mongodb://...
+# fly secrets set AWS_ACCESS_KEY_ID=...
+# fly secrets set AWS_SECRET_ACCESS_KEY=...

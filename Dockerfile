@@ -20,26 +20,24 @@ RUN mkdir -p /app/uploads
 # Copia backend
 COPY backend/ ./backend/
 
-# Instala dependências do Python (já inclui boto3)
+# Instala dependências do Python
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Copia build do React
 COPY --from=frontend-build /app/frontend/build ./frontend_build/
 
-# Copia o .env se existir (ou use variáveis de ambiente do Fly.io)
-COPY backend/.env* ./backend/ 2>/dev/null || true
-
-# Variáveis de ambiente padrão (podem ser sobrescritas)
-ENV STORAGE_MODE=local
+# Variáveis de ambiente padrão
+ENV STORAGE_MODE=supabase
 ENV UPLOAD_DIR=/app/uploads
 ENV PYTHONUNBUFFERED=1
 
-# Porta usada pelo Fly.io
-EXPOSE 8080
+# Railway usa a variável PORT dinamicamente
+ENV PORT=8080
+EXPOSE $PORT
 
-# Health check (opcional, mas recomendado)
+# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:8080/api/auth/me')" || exit 1
+  CMD python -c "import requests; requests.get('http://localhost:$PORT/api/auth/me', timeout=2)" || exit 1
 
-# Inicia o FastAPI com Uvicorn
-CMD ["uvicorn", "backend.server:app", "--host", "0.0.0.0", "--port", "8080"]
+# Inicia o FastAPI com porta dinâmica do Railway
+CMD uvicorn backend.server:app --host 0.0.0.0 --port $PORT

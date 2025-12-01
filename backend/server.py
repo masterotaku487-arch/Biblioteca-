@@ -58,6 +58,18 @@ active_connections: Set[WebSocket] = set()
 
 # Create app
 app = FastAPI()
+# --- ADIÇÃO PARA CORRIGIR O ERRO 404 DO RENDER ---
+@app.get("/", include_in_schema=False)
+def read_root():
+    """
+    Endpoint de checagem de saúde (Health Check).
+    Corrige o INFO: "GET / HTTP/1.1" 404 Not Found do Render.
+    """
+    return {"status": "ok", "service": "biblioteca-backend", "message": "Service is running fine."}
+# --------------------------------------------------
+
+api_router = APIRouter(prefix="/api")
+# ... resto do código ...
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(

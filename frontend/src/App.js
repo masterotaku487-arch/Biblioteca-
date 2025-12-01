@@ -6,12 +6,16 @@ import LoginPage from "@/pages/LoginPage";
 import Dashboard from "@/pages/Dashboard";
 import { Toaster } from "@/components/ui/sonner";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// CORREÇÃO CRÍTICA: 
+// 1. O código foi atualizado para usar REACT_APP_API_URL, que é a variável definida no Vercel.
+// 2. O valor desta variável deve ser 'https://biblioteca-privada-lfp5.onrender.com'
+const BACKEND_URL = process.env.REACT_APP_API_URL; 
 export const API = `${BACKEND_URL}/api`;
 
 // Axios interceptor for auth token
 axios.interceptors.request.use(
   (config) => {
+    // O token de autenticação é lido do localStorage
     const token = localStorage.getItem("token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -32,14 +36,17 @@ function App() {
     checkAuth();
   }, []);
 
+  // Verifica a autenticação ao carregar
   const checkAuth = async () => {
     const token = localStorage.getItem("token");
     if (token) {
       try {
+        // Tenta buscar as informações do usuário usando o token salvo
         const response = await axios.get(`${API}/auth/me`);
         setUser(response.data);
         setIsAuthenticated(true);
       } catch (error) {
+        // Se falhar (token expirado ou inválido), remove e desloga
         localStorage.removeItem("token");
         setIsAuthenticated(false);
       }
@@ -99,3 +106,4 @@ function App() {
 }
 
 export default App;
+

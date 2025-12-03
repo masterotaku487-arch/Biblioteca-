@@ -505,7 +505,10 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=[
+    "https://biblioteca-sigma-gilt.vercel.app",
+    "http://localhost:3000",  # para testes locais
+],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -521,3 +524,4 @@ try:
     mount_frontend(app)
 except:
     logger.warning("⚠️ static_server não encontrado")
+    

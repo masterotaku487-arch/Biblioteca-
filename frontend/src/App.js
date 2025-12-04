@@ -9,7 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 // CORREÇÃO CRÍTICA: 
 // 1. O código foi atualizado para usar REACT_APP_API_URL, que é a variável definida no Vercel.
 // 2. O valor desta variável deve ser 'https://biblioteca-privada-lfp5.onrender.com'
-const BACKEND_URL = process.env.REACT_APP_API_URL; 
+const BACKEND_URL = "https://biblioteca-privada-lfp5.onrender.com";
 export const API = `${BACKEND_URL}/api`;
 
 // Axios interceptor for auth token

@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import LoginPage from "@/pages/LoginPage";
 import Dashboard from "@/pages/Dashboard";
+import UpgradePage from "@/pages/UpgradePage"; // 🆕 ADICIONAR ESTA LINHA
 import { Toaster } from "@/components/ui/sonner";
 
 // CORREÇÃO CRÍTICA: 
@@ -99,6 +100,11 @@ function App() {
               )
             }
           />
+          {/* 🆕 ADICIONAR ESTA ROTA */}
+          <Route
+            path="/upgrade"
+            element={<UpgradePage />}
+          />
         </Routes>
       </BrowserRouter>
     </div>
@@ -106,4 +112,3 @@ function App() {
 }
 
 export default App;
-

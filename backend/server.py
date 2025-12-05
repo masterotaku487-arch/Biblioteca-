@@ -17,6 +17,9 @@ import aiofiles
 import json
 import io
 import httpx
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -43,6 +46,21 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "uploads")
 
+# Email configuration
+SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+ADMIN_EMAIL = "masterotaku487@gmail.com"
+
+# Google OAuth
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+# Mercado Pago
+MERCADOPAGO_ACCESS_TOKEN = os.environ.get("MERCADOPAGO_ACCESS_TOKEN")
+MERCADOPAGO_PUBLIC_KEY = os.environ.get("MERCADOPAGO_PUBLIC_KEY")
+
 if STORAGE_MODE == "supabase":
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("⚠️ Supabase não configurado! Usando storage local.")
@@ -58,18 +76,11 @@ active_connections: Set[WebSocket] = set()
 
 # Create app
 app = FastAPI()
-# --- ADIÇÃO PARA CORRIGIR O ERRO 404 DO RENDER ---
+
 @app.get("/", include_in_schema=False)
 def read_root():
-    """
-    Endpoint de checagem de saúde (Health Check).
-    Corrige o INFO: "GET / HTTP/1.1" 404 Not Found do Render.
-    """
     return {"status": "ok", "service": "biblioteca-backend", "message": "Service is running fine."}
-# --------------------------------------------------
 
-api_router = APIRouter(prefix="/api")
-# ... resto do código ...
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(
@@ -78,19 +89,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# MODELS
+# ============================================================================
 
-# Models
 class User(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     username: str
+    email: Optional[str] = None
+    google_id: Optional[str] = None
     role: str = "user"
+    plan: str = "free"
+    storage_used: int = 0
+    storage_limit: int = 104857600  # 100 MB
+    file_count: int = 0
+    premium_since: Optional[datetime] = None
+    premium_expires: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class UserCreate(BaseModel):
     username: str
     password: str
+    email: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -136,131 +158,37 @@ class ChatToggle(BaseModel):
     enabled: bool
 
 
-# Supabase Storage Helper Functions
-async def upload_to_supabase(file_content: bytes, file_path: str) -> str:
-    """Upload file to Supabase Storage"""
-    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
-    
-    headers = {
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/octet-stream"
-    }
-    
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(url, content=file_content, headers=headers)
-        
-        if response.status_code not in [200, 201]:
-            logger.error(f"Supabase upload error: {response.text}")
-            raise Exception(f"Upload failed: {response.status_code}")
-        
-        return file_path
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
 
-
-async def download_from_supabase(file_path: str) -> bytes:
-    """Download file from Supabase Storage"""
-    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
-    
-    headers = {
-        "Authorization": f"Bearer {SUPABASE_KEY}"
-    }
-    
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(url, headers=headers)
-        
-        if response.status_code != 200:
-            logger.error(f"Supabase download error: {response.text}")
-            raise Exception(f"Download failed: {response.status_code}")
-        
-        return response.content
-
-
-async def delete_from_supabase(file_path: str):
-    """Delete file from Supabase Storage"""
-    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
-    
-    headers = {
-        "Authorization": f"Bearer {SUPABASE_KEY}"
-    }
-    
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.delete(url, headers=headers)
-        
-        if response.status_code not in [200, 204]:
-            logger.error(f"Supabase delete error: {response.text}")
-
-
-# Storage Helper Functions
-async def save_file_to_storage(file_content: bytes, filename: str, original_name: str, uploaded_by: str) -> dict:
-    """Save file to configured storage"""
-    
-    if STORAGE_MODE == "supabase":
-        try:
-            file_path = f"{uploaded_by}/{filename}"
-            await upload_to_supabase(file_content, file_path)
-            logger.info(f"☁️ Arquivo salvo no Supabase: {file_path}")
-            return {
-                "storage_location": "supabase",
-                "supabase_path": file_path,
-                "filename": filename
-            }
-        except Exception as e:
-            logger.error(f"❌ Erro no Supabase: {e}. Usando local.")
-    
-    # Local storage (fallback)
-    file_path = UPLOAD_DIR / filename
-    async with aiofiles.open(file_path, 'wb') as out_file:
-        await out_file.write(file_content)
-    
-    logger.info(f"💾 Arquivo salvo localmente: {file_path}")
-    return {
-        "storage_location": "local",
-        "supabase_path": None,
-        "filename": filename
-    }
-
-
-async def get_file_from_storage(file_metadata: dict) -> bytes:
-    """Retrieve file from storage"""
-    
-    if file_metadata.get("storage_location") == "supabase":
-        try:
-            return await download_from_supabase(file_metadata["supabase_path"])
-        except Exception as e:
-            logger.error(f"❌ Erro ao baixar do Supabase: {e}")
-            raise HTTPException(status_code=404, detail="File not found")
-    
-    # Local storage
-    file_path = UPLOAD_DIR / file_metadata["filename"]
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk")
-    
-    async with aiofiles.open(file_path, 'rb') as f:
-        return await f.read()
-
-
-async def delete_file_from_storage(file_metadata: dict):
-    """Delete file from storage"""
-    
-    if file_metadata.get("storage_location") == "supabase":
-        try:
-            await delete_from_supabase(file_metadata["supabase_path"])
-            logger.info(f"🗑️ Arquivo removido do Supabase")
-        except Exception as e:
-            logger.error(f"❌ Erro ao deletar do Supabase: {e}")
-    else:
-        file_path = UPLOAD_DIR / file_metadata["filename"]
-        if file_path.exists():
-            file_path.unlink()
-            logger.info(f"🗑️ Arquivo removido localmente")
-
-
-# Auth Helper Functions
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password):
     return pwd_context.hash(password)
+
+
+async def check_user_limits(user: User, file_size: int):
+    """Verifica se usuário pode fazer upload"""
+    if user.plan == "free":
+        if user.file_count >= 20:
+            raise HTTPException(
+                status_code=403,
+                detail="Limite de 20 arquivos atingido. Faça upgrade para Premium!"
+            )
+        if user.storage_used + file_size > user.storage_limit:
+            raise HTTPException(
+                status_code=403,
+                detail="Limite de storage atingido (100 MB). Faça upgrade para Premium!"
+            )
+    elif user.plan == "premium":
+        if user.storage_used + file_size > user.storage_limit:
+            raise HTTPException(
+                status_code=403,
+                detail="Limite de storage atingido (5 GB)."
+            )
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -274,13 +202,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     try:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        user_id: str = payload.get("sub")
+        if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    user = await db.users.find_one({"username": username}, {"_id": 0})
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
     return User(**user)
@@ -292,12 +220,99 @@ async def get_admin_user(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-# Startup
+# Supabase Storage Helper Functions
+async def upload_to_supabase(file_content: bytes, file_path: str) -> str:
+    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/octet-stream"
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(url, content=file_content, headers=headers)
+        if response.status_code not in [200, 201]:
+            logger.error(f"Supabase upload error: {response.text}")
+            raise Exception(f"Upload failed: {response.status_code}")
+        return file_path
+
+
+async def download_from_supabase(file_path: str) -> bytes:
+    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
+    headers = {"Authorization": f"Bearer {SUPABASE_KEY}"}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(url, headers=headers)
+        if response.status_code != 200:
+            logger.error(f"Supabase download error: {response.text}")
+            raise Exception(f"Download failed: {response.status_code}")
+        return response.content
+
+
+async def delete_from_supabase(file_path: str):
+    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
+    headers = {"Authorization": f"Bearer {SUPABASE_KEY}"}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.delete(url, headers=headers)
+        if response.status_code not in [200, 204]:
+            logger.error(f"Supabase delete error: {response.text}")
+
+
+async def save_file_to_storage(file_content: bytes, filename: str, original_name: str, user_id: str) -> dict:
+    if STORAGE_MODE == "supabase":
+        try:
+            file_path = f"{user_id}/{filename}"
+            await upload_to_supabase(file_content, file_path)
+            logger.info(f"☁️ Arquivo salvo no Supabase: {file_path}")
+            return {"storage_location": "supabase", "supabase_path": file_path, "filename": filename}
+        except Exception as e:
+            logger.error(f"❌ Erro no Supabase: {e}. Usando local.")
+    
+    file_path = UPLOAD_DIR / filename
+    async with aiofiles.open(file_path, 'wb') as out_file:
+        await out_file.write(file_content)
+    logger.info(f"💾 Arquivo salvo localmente: {file_path}")
+    return {"storage_location": "local", "supabase_path": None, "filename": filename}
+
+
+async def get_file_from_storage(file_metadata: dict) -> bytes:
+    if file_metadata.get("storage_location") == "supabase":
+        try:
+            return await download_from_supabase(file_metadata["supabase_path"])
+        except Exception as e:
+            logger.error(f"❌ Erro ao baixar do Supabase: {e}")
+            raise HTTPException(status_code=404, detail="File not found")
+    
+    file_path = UPLOAD_DIR / file_metadata["filename"]
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    async with aiofiles.open(file_path, 'rb') as f:
+        return await f.read()
+
+
+async def delete_file_from_storage(file_metadata: dict):
+    if file_metadata.get("storage_location") == "supabase":
+        try:
+            await delete_from_supabase(file_metadata["supabase_path"])
+            logger.info(f"🗑️ Arquivo removido do Supabase")
+        except Exception as e:
+            logger.error(f"❌ Erro ao deletar do Supabase: {e}")
+    else:
+        file_path = UPLOAD_DIR / file_metadata["filename"]
+        if file_path.exists():
+            file_path.unlink()
+            logger.info(f"🗑️ Arquivo removido localmente")
+            # ============================================================================
+# STARTUP
+# ============================================================================
+
 @app.on_event("startup")
 async def startup_event():
     admin = await db.users.find_one({"username": "Masterotaku"})
     if not admin:
-        admin_user = User(username="Masterotaku", role="admin")
+        admin_user = User(
+            username="Masterotaku",
+            role="admin",
+            plan="premium",
+            storage_limit=5368709120  # 5 GB
+        )
         admin_doc = admin_user.model_dump()
         admin_doc["password_hash"] = get_password_hash("adm123")
         admin_doc["created_at"] = admin_doc["created_at"].isoformat()
@@ -311,20 +326,29 @@ async def startup_event():
     logger.info(f"✅ Storage: {STORAGE_MODE}")
 
 
-# Authentication routes
+# ============================================================================
+# AUTHENTICATION ROUTES
+# ============================================================================
+
 @api_router.post("/auth/register", response_model=Token)
 async def register(user_data: UserCreate):
     if await db.users.find_one({"username": user_data.username}):
         raise HTTPException(status_code=400, detail="Username already registered")
     
-    new_user = User(username=user_data.username, role="user")
+    new_user = User(
+        username=user_data.username,
+        email=user_data.email,
+        role="user",
+        plan="free",
+        storage_limit=104857600  # 100 MB
+    )
     user_doc = new_user.model_dump()
     user_doc["password_hash"] = get_password_hash(user_data.password)
     user_doc["created_at"] = user_doc["created_at"].isoformat()
     await db.users.insert_one(user_doc)
     
     access_token = create_access_token(
-        data={"sub": user_data.username},
+        data={"sub": new_user.id},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
@@ -338,7 +362,7 @@ async def login(user_data: UserLogin):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     
     access_token = create_access_token(
-        data={"sub": user_data.username},
+        data={"sub": user["id"]},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
@@ -350,7 +374,52 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-# File routes
+@api_router.delete("/auth/delete-account")
+async def delete_account(
+    password: str = Form(...),
+    confirmation: str = Form(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Usuário deleta própria conta"""
+    user = await db.users.find_one({"id": current_user.id}, {"_id": 0})
+    if not verify_password(password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Senha incorreta")
+    
+    if confirmation != "DELETAR":
+        raise HTTPException(status_code=400, detail="Digite 'DELETAR' para confirmar")
+    
+    # Deletar arquivos do usuário
+    files = await db.files.find({"uploaded_by": current_user.id}, {"_id": 0}).to_list(10000)
+    for file in files:
+        await delete_file_from_storage(file)
+    await db.files.delete_many({"uploaded_by": current_user.id})
+    
+    # Deletar compartilhamentos
+    await db.file_shares.delete_many({"$or": [{"owner_id": current_user.id}, {"shared_with_id": current_user.id}]})
+    
+    # Deletar participações em times
+    await db.teams.update_many(
+        {"members": current_user.id},
+        {"$pull": {"members": current_user.id}}
+    )
+    
+    # Deletar times criados
+    await db.teams.delete_many({"owner_id": current_user.id})
+    
+    # Deletar convites
+    await db.team_invites.delete_many({"$or": [{"inviter_id": current_user.id}, {"invitee_username": current_user.username}]})
+    
+    # Deletar usuário
+    await db.users.delete_one({"id": current_user.id})
+    
+    logger.info(f"🗑️ Conta deletada: {current_user.username}")
+    return {"message": "Conta deletada com sucesso"}
+
+
+# ============================================================================
+# FILE ROUTES
+# ============================================================================
+
 @api_router.post("/files/upload", response_model=FileMetadata)
 async def upload_file(
     file: UploadFile = File(...),
@@ -364,7 +433,10 @@ async def upload_file(
     content = await file.read()
     file_size = len(content)
     
-    storage_info = await save_file_to_storage(content, filename, file.filename, current_user.username)
+    # Verificar limites
+    await check_user_limits(current_user, file_size)
+    
+    storage_info = await save_file_to_storage(content, filename, file.filename, current_user.id)
     
     file_metadata = FileMetadata(
         id=file_id,
@@ -372,7 +444,7 @@ async def upload_file(
         original_name=file.filename,
         file_type=file.content_type or "application/octet-stream",
         file_size=file_size,
-        uploaded_by=current_user.username,
+        uploaded_by=current_user.id,
         is_private=True,
         has_password=password is not None,
         storage_location=storage_info["storage_location"],
@@ -387,6 +459,17 @@ async def upload_file(
     
     await db.files.insert_one(metadata_doc)
     
+    # Atualizar contadores do usuário
+    await db.users.update_one(
+        {"id": current_user.id},
+        {
+            "$inc": {
+                "storage_used": file_size,
+                "file_count": 1
+            }
+        }
+    )
+    
     logger.info(f"📤 Upload: {file.filename} por {current_user.username}")
     
     return file_metadata
@@ -394,7 +477,7 @@ async def upload_file(
 
 @api_router.get("/files", response_model=List[FileMetadata])
 async def get_files(current_user: User = Depends(get_current_user)):
-    query = {} if current_user.role == "admin" else {"uploaded_by": current_user.username}
+    query = {} if current_user.role == "admin" else {"uploaded_by": current_user.id}
     files = await db.files.find(query, {"_id": 0, "password_hash": 0}).to_list(10000)
     
     for file in files:
@@ -410,7 +493,7 @@ async def download_file(file_id: str, current_user: User = Depends(get_current_u
     if not file_metadata:
         raise HTTPException(status_code=404, detail="File not found")
     
-    if current_user.role != "admin" and file_metadata["uploaded_by"] != current_user.username:
+    if current_user.role != "admin" and file_metadata["uploaded_by"] != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     
     file_content = await get_file_from_storage(file_metadata)
@@ -423,30 +506,53 @@ async def download_file(file_id: str, current_user: User = Depends(get_current_u
 
 
 @api_router.delete("/files/{file_id}")
-async def delete_file(file_id: str, current_user: User = Depends(get_admin_user)):
+async def delete_file(file_id: str, current_user: User = Depends(get_current_user)):
     file_metadata = await db.files.find_one({"id": file_id}, {"_id": 0})
     if not file_metadata:
         raise HTTPException(status_code=404, detail="File not found")
     
+    if current_user.role != "admin" and file_metadata["uploaded_by"] != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     await delete_file_from_storage(file_metadata)
     await db.files.delete_one({"id": file_id})
+    
+    # Atualizar contadores
+    await db.users.update_one(
+        {"id": current_user.id},
+        {
+            "$inc": {
+                "storage_used": -file_metadata["file_size"],
+                "file_count": -1
+            }
+        }
+    )
     
     return {"message": "File deleted successfully"}
 
 
 @api_router.get("/user/stats")
 async def get_user_stats(current_user: User = Depends(get_current_user)):
-    files = await db.files.find({"uploaded_by": current_user.username}, {"file_size": 1}).to_list(10000)
+    files = await db.files.find({"uploaded_by": current_user.id}, {"file_size": 1}).to_list(10000)
     total_storage = sum(f.get("file_size", 0) for f in files)
     
     return {
+        "username": current_user.username,
+        "plan": current_user.plan,
         "total_files": len(files),
-        "total_storage_bytes": total_storage,
-        "total_storage_mb": round(total_storage / (1024 * 1024), 2)
+        "file_count": current_user.file_count,
+        "storage_used": current_user.storage_used,
+        "storage_limit": current_user.storage_limit,
+        "storage_used_mb": round(current_user.storage_used / (1024 * 1024), 2),
+        "storage_limit_mb": round(current_user.storage_limit / (1024 * 1024), 2),
+        "storage_percentage": round((current_user.storage_used / current_user.storage_limit) * 100, 2) if current_user.storage_limit > 0 else 0
     }
 
 
-# Admin routes
+# ============================================================================
+# ADMIN ROUTES
+# ============================================================================
+
 @api_router.get("/admin/stats")
 async def get_stats(current_user: User = Depends(get_admin_user)):
     total_users = await db.users.count_documents({})
@@ -465,7 +571,10 @@ async def get_stats(current_user: User = Depends(get_admin_user)):
     }
 
 
-# Chat routes
+# ============================================================================
+# CHAT ROUTES
+# ============================================================================
+
 @api_router.get("/chat/enabled")
 async def get_chat_enabled(current_user: User = Depends(get_current_user)):
     settings = await db.settings.find_one({"key": "chat_enabled"})
@@ -498,17 +607,19 @@ async def toggle_chat(data: ChatToggle, current_user: User = Depends(get_admin_u
     return {"enabled": data.enabled}
 
 
-# Include router
+# ============================================================================
+# CORS & INCLUDE ROUTER
+# ============================================================================
+
 app.include_router(api_router)
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=[
-    "https://biblioteca-sigma-gilt.vercel.app",
-    "http://localhost:3000",  # para testes locais
-],
+        "https://biblioteca-sigma-gilt.vercel.app",
+        "http://localhost:3000",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -517,11 +628,3 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
-# Mount frontend
-try:
-    from static_server import mount_frontend
-    mount_frontend(app)
-except:
-    logger.warning("⚠️ static_server não encontrado")
-    

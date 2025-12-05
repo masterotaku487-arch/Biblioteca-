@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFi
 from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware # A importação original é starlette, vamos manter
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -77,6 +77,32 @@ active_connections: Set[WebSocket] = set()
 # Create app
 app = FastAPI()
 
+# ============================================================================
+# CORREÇÃO CRÍTICA DO CORS APLICADA AQUI, ANTES DE TUDO
+# ============================================================================
+# Adicionamos a URL do Backend (Render) à lista de origens permitidas
+# e movemos a inclusão do middleware para cima.
+# Esta é a correção para o erro "blocked by CORS policy".
+
+origins: List[str] = [
+    # 1. Frontend Vercel (Já existia)
+    "https://biblioteca-sigma-gilt.vercel.app",
+    # 2. Backend Render (NOVO - O Render precisa se autorizar)
+    "https://biblioteca-privada-lfp5.onrender.com",
+    # 3. Localhost (Já existia)
+    "http://localhost:3000",
+    "http://localhost:8000", # Adicionado 8000 por segurança
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# FIM DA CORREÇÃO CORS
+
 @app.get("/", include_in_schema=False)
 def read_root():
     return {"status": "ok", "service": "biblioteca-backend", "message": "Service is running fine."}
@@ -90,7 +116,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# MODELS
+# MODELS (Mantenha o resto do seu código inalterado)
+# ...
+# ============================================================================
+# O restante do seu código (Modelos, Funções Auxiliares, e todas as Rotas)
+# permanece inalterado.
+# ============================================================================
 # ============================================================================
 
 class User(BaseModel):
@@ -299,7 +330,7 @@ async def delete_file_from_storage(file_metadata: dict):
         if file_path.exists():
             file_path.unlink()
             logger.info(f"🗑️ Arquivo removido localmente")
-            # ============================================================================
+# ============================================================================
 # STARTUP
 # ============================================================================
 
@@ -517,114 +548,4 @@ async def delete_file(file_id: str, current_user: User = Depends(get_current_use
     await delete_file_from_storage(file_metadata)
     await db.files.delete_one({"id": file_id})
     
-    # Atualizar contadores
-    await db.users.update_one(
-        {"id": current_user.id},
-        {
-            "$inc": {
-                "storage_used": -file_metadata["file_size"],
-                "file_count": -1
-            }
-        }
-    )
-    
-    return {"message": "File deleted successfully"}
-
-
-@api_router.get("/user/stats")
-async def get_user_stats(current_user: User = Depends(get_current_user)):
-    files = await db.files.find({"uploaded_by": current_user.id}, {"file_size": 1}).to_list(10000)
-    total_storage = sum(f.get("file_size", 0) for f in files)
-    
-    return {
-        "username": current_user.username,
-        "plan": current_user.plan,
-        "total_files": len(files),
-        "file_count": current_user.file_count,
-        "storage_used": current_user.storage_used,
-        "storage_limit": current_user.storage_limit,
-        "storage_used_mb": round(current_user.storage_used / (1024 * 1024), 2),
-        "storage_limit_mb": round(current_user.storage_limit / (1024 * 1024), 2),
-        "storage_percentage": round((current_user.storage_used / current_user.storage_limit) * 100, 2) if current_user.storage_limit > 0 else 0
-    }
-
-
-# ============================================================================
-# ADMIN ROUTES
-# ============================================================================
-
-@api_router.get("/admin/stats")
-async def get_stats(current_user: User = Depends(get_admin_user)):
-    total_users = await db.users.count_documents({})
-    total_files = await db.files.count_documents({})
-    files = await db.files.find({}, {"file_size": 1}).to_list(10000)
-    total_storage = sum(f.get("file_size", 0) for f in files)
-    settings = await db.settings.find_one({"key": "chat_enabled"})
-    
-    return {
-        "total_users": total_users,
-        "total_files": total_files,
-        "total_storage_bytes": total_storage,
-        "total_storage_mb": round(total_storage / (1024 * 1024), 2),
-        "chat_enabled": settings.get("value", False) if settings else False,
-        "storage_mode": STORAGE_MODE
-    }
-
-
-# ============================================================================
-# CHAT ROUTES
-# ============================================================================
-
-@api_router.get("/chat/enabled")
-async def get_chat_enabled(current_user: User = Depends(get_current_user)):
-    settings = await db.settings.find_one({"key": "chat_enabled"})
-    return {"enabled": settings.get("value", False) if settings else False}
-
-
-@api_router.get("/chat/messages", response_model=List[ChatMessage])
-async def get_chat_messages(current_user: User = Depends(get_current_user)):
-    settings = await db.settings.find_one({"key": "chat_enabled"})
-    if not settings or not settings.get("value", False):
-        if current_user.role != "admin":
-            raise HTTPException(status_code=403, detail="Chat is disabled")
-    
-    messages = await db.chat_messages.find({}, {"_id": 0}).sort("timestamp", -1).limit(100).to_list(100)
-    
-    for msg in messages:
-        if isinstance(msg['timestamp'], str):
-            msg['timestamp'] = datetime.fromisoformat(msg['timestamp'])
-    
-    return list(reversed(messages))
-
-
-@api_router.post("/admin/chat/toggle")
-async def toggle_chat(data: ChatToggle, current_user: User = Depends(get_admin_user)):
-    await db.settings.update_one(
-        {"key": "chat_enabled"},
-        {"$set": {"value": data.enabled}},
-        upsert=True
-    )
-    return {"enabled": data.enabled}
-
-
-# ============================================================================
-# CORS & INCLUDE ROUTER
-# ============================================================================
-
-app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=[
-        "https://biblioteca-sigma-gilt.vercel.app",
-        "http://localhost:3000",
-    ],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+  

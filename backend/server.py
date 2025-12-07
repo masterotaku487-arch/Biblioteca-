@@ -20,14 +20,26 @@ import httpx
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+# Adicionando aiosmtplib para envio assíncrono de e-mail (necessário para o endpoint de bug report)
+import aiosmtplib
+from email.utils import formataddr
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+mongo_url = os.environ.get('MONGO_URL')
+if not mongo_url:
+    # Fallback para string vazia para evitar erro de inicialização se a var não existir,
+    # mas o app vai falhar ao tentar conectar. O ideal é ter a variável.
+    print("⚠️ MONGO_URL não encontrada nas variáveis de ambiente.")
+    mongo_url = ""
+
+try:
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[os.environ.get('DB_NAME', 'biblioteca')]
+except Exception as e:
+    print(f"❌ Erro ao conectar ao MongoDB: {e}")
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -47,19 +59,19 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "uploads")
 
 # Email configuration
-SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "masterotaku487@gmail.com")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "oncl yigo lvzg oadz")
 ADMIN_EMAIL = "masterotaku487@gmail.com"
 
 # Google OAuth
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "202794626190-m95el70t5hbr1pphnj3lcf0suv8lv3k7.apps.googleusercontent.com")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "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")
+BACKEND_URL = os.environ.get("BACKEND_URL", "https://biblioteca-privada-lfp5.onrender.com")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://biblioteca-sigma-gilt.vercel.app")
 
 # Mercado Pago
-MERCADOPAGO_ACCESS_TOKEN = os.environ.get("MERCADOPAGO_ACCESS_TOKEN")
-MERCADOPAGO_PUBLIC_KEY = os.environ.get("MERCADOPAGO_PUBLIC_KEY")
+MERCADOPAGO_ACCESS_TOKEN = os.environ.get("MERCADOPAGO_ACCESS_TOKEN", "")
+MERCADOPAGO_PUBLIC_KEY = os.environ.get("MERCADOPAGO_PUBLIC_KEY", "")
 
 if STORAGE_MODE == "supabase":
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -76,6 +88,22 @@ active_connections: Set[WebSocket] = set()
 
 # Create app
 app = FastAPI()
+
+# ============================================================================
+# CORS (Configuração Crítica - DEVE vir antes das rotas)
+# ============================================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=[
+        "https://biblioteca-sigma-gilt.vercel.app",  # Seu Frontend Vercel
+        "https://biblioteca-privada-lfp5.onrender.com", # Seu Backend Render
+        "http://localhost:3000",
+        "http://localhost:8000",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/", include_in_schema=False)
 def read_root():
@@ -158,6 +186,33 @@ class ChatToggle(BaseModel):
     enabled: bool
 
 
+class BugReport(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    username: str
+    email: Optional[str] = None
+    category: str
+    title: str
+    description: str
+    steps_to_reproduce: Optional[str] = None
+    expected_behavior: Optional[str] = None
+    actual_behavior: Optional[str] = None
+    browser_info: Optional[dict] = None
+    status: str = "pending"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BugReportCreate(BaseModel):
+    category: str
+    title: str
+    description: str
+    steps_to_reproduce: Optional[str] = None
+    expected_behavior: Optional[str] = None
+    actual_behavior: Optional[str] = None
+    browser_info: Optional[dict] = None
+
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -218,6 +273,30 @@ async def get_admin_user(current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+async def send_email(subject: str, body: str, to_email: str = ADMIN_EMAIL):
+    """Envia email via SMTP (síncrono/bloqueante - fallback simples)"""
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        logger.warning("Email não configurado")
+        return
+    
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = SMTP_EMAIL
+        msg['To'] = to_email
+        
+        html_part = MIMEText(body, 'html')
+        msg.attach(html_part)
+        
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.send_message(msg)
+        
+        logger.info(f"📧 Email enviado para {to_email}")
+    except Exception as e:
+        logger.error(f"❌ Erro ao enviar email: {e}")
 
 
 # Supabase Storage Helper Functions
@@ -299,7 +378,44 @@ async def delete_file_from_storage(file_metadata: dict):
         if file_path.exists():
             file_path.unlink()
             logger.info(f"🗑️ Arquivo removido localmente")
-            # ============================================================================
+
+
+async def send_bug_report_email(bug: BugReport):
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        return
+    
+    html = f"""
+    <html>
+    <body style="font-family: Arial;">
+      <h2 style="color: #e63946;">🐛 Bug Report</h2>
+      <p><strong>Categoria:</strong> {bug.category}</p>
+      <p><strong>Título:</strong> {bug.title}</p>
+      <p><strong>Usuário:</strong> {bug.username}</p>
+      <hr>
+      <h3>Descrição:</h3>
+      <p>{bug.description}</p>
+      {f'<p><strong>Passos:</strong><br>{bug.steps_to_reproduce}</p>' if bug.steps_to_reproduce else ''}
+      {f'<p><strong>Esperado:</strong><br>{bug.expected_behavior}</p>' if bug.expected_behavior else ''}
+      {f'<p><strong>Atual:</strong><br>{bug.actual_behavior}</p>' if bug.actual_behavior else ''}
+      {f'<pre>{json.dumps(bug.browser_info, indent=2)}</pre>' if bug.browser_info else ''}
+    </body>
+    </html>
+    """
+    
+    try:
+        msg = MIMEMultipart()
+        msg["Subject"] = f"Bug: {bug.title}"
+        msg["From"] = formataddr(("Biblioteca", SMTP_EMAIL))
+        msg["To"] = ADMIN_EMAIL
+        msg.attach(MIMEText(html, "html"))
+        
+        async with aiosmtplib.SMTP(hostname="smtp.gmail.com", port=587, use_tls=False, start_tls=True) as smtp:
+            await smtp.login(SMTP_EMAIL, SMTP_PASSWORD)
+            await smtp.send_message(msg)
+    except Exception as e:
+        logger.error(f"Email error: {e}")
+
+# ============================================================================
 # STARTUP
 # ============================================================================
 
@@ -307,323 +423,139 @@ async def delete_file_from_storage(file_metadata: dict):
 async def startup_event():
     admin = await db.users.find_one({"username": "Masterotaku"})
     if not admin:
-        admin_user = User(
-            username="Masterotaku",
-            role="admin",
-            plan="premium",
-            storage_limit=5368709120  # 5 GB
-        )
-        admin_doc = admin_user.model_dump()
-        admin_doc["password_hash"] = get_password_hash("adm123")
-        admin_doc["created_at"] = admin_doc["created_at"].isoformat()
-        await db.users.insert_one(admin_doc)
-        logger.info("✅ Admin criado: Masterotaku / adm123")
+        admin_user = User(username="Masterotaku", role="admin", plan="premium", storage_limit=5368709120)
+        doc = admin_user.model_dump()
+        doc["password_hash"] = get_password_hash("@adm3011")
+        doc["created_at"] = doc["created_at"].isoformat()
+        await db.users.insert_one(doc)
+        logger.info("✅ Admin: Masterotaku / @adm3011")
     
     settings = await db.settings.find_one({"key": "chat_enabled"})
     if not settings:
         await db.settings.insert_one({"key": "chat_enabled", "value": False})
-    
-    logger.info(f"✅ Storage: {STORAGE_MODE}")
-
 
 # ============================================================================
-# AUTHENTICATION ROUTES
+# AUTH ROUTES
 # ============================================================================
 
 @api_router.post("/auth/register", response_model=Token)
 async def register(user_data: UserCreate):
     if await db.users.find_one({"username": user_data.username}):
-        raise HTTPException(status_code=400, detail="Username already registered")
+        raise HTTPException(400, "Username already registered")
     
-    new_user = User(
-        username=user_data.username,
-        email=user_data.email,
-        role="user",
-        plan="free",
-        storage_limit=104857600  # 100 MB
-    )
-    user_doc = new_user.model_dump()
-    user_doc["password_hash"] = get_password_hash(user_data.password)
-    user_doc["created_at"] = user_doc["created_at"].isoformat()
-    await db.users.insert_one(user_doc)
+    new_user = User(username=user_data.username, email=user_data.email)
+    doc = new_user.model_dump()
+    doc["password_hash"] = get_password_hash(user_data.password)
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.users.insert_one(doc)
     
-    access_token = create_access_token(
-        data={"sub": new_user.id},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    
-    return Token(access_token=access_token, token_type="bearer", user=new_user)
-
+    token = create_access_token({"sub": new_user.id}, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    return Token(access_token=token, token_type="bearer", user=new_user)
 
 @api_router.post("/auth/login", response_model=Token)
 async def login(user_data: UserLogin):
     user = await db.users.find_one({"username": user_data.username}, {"_id": 0})
-    if not user or not verify_password(user_data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    if not user or not user.get("password_hash") or not verify_password(user_data.password, user["password_hash"]):
+        raise HTTPException(401, "Incorrect username or password")
     
-    access_token = create_access_token(
-        data={"sub": user["id"]},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    
-    return Token(access_token=access_token, token_type="bearer", user=User(**user))
-
+    token = create_access_token({"sub": user["id"]}, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    return Token(access_token=token, token_type="bearer", user=User(**user))
 
 @api_router.get("/auth/me", response_model=User)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+@api_router.get("/auth/google/login")
+async def google_login():
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(503, "Google OAuth not configured")
+    
+    url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth?"
+        f"client_id={GOOGLE_CLIENT_ID}&"
+        f"redirect_uri={FRONTEND_URL}/auth/google/callback&"
+        f"response_type=code&"
+        f"scope=openid%20email%20profile"
+    )
+    return RedirectResponse(url)
 
-@api_router.delete("/auth/delete-account")
-async def delete_account(
-    password: str = Form(...),
-    confirmation: str = Form(...),
-    current_user: User = Depends(get_current_user)
-):
-    """Usuário deleta própria conta"""
-    user = await db.users.find_one({"id": current_user.id}, {"_id": 0})
+@api_router.get("/auth/google/callback")
+async def google_callback(code: str):
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(503, "Google OAuth not configured")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": f"{FRONTEND_URL}/auth/google/callback",
+                    "grant_type": "authorization_code"
+                }
+            )
+            token_response.raise_for_status()
+            access_token = token_response.json().get("access_token")
+            
+            user_response = await client.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            user_response.raise_for_status()
+            user_data = user_response.json()
+        
+        google_id = user_data.get("id")
+        email = user_data.get("email")
+        
+        user = await db.users.find_one({"google_id": google_id})
+        
+        if not user:
+            username = email.split("@")[0] if email else f"user_{google_id[:8]}"
+            base_username = username
+            counter = 1
+            while await db.users.find_one({"username": username}):
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            new_user = User(username=username, email=email, google_id=google_id)
+            doc = new_user.model_dump()
+            doc["created_at"] = doc["created_at"].isoformat()
+            await db.users.insert_one(doc)
+            user = doc
+        
+        jwt_token = create_access_token({"sub": user["id"]}, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+        return RedirectResponse(f"{FRONTEND_URL}/?token={jwt_token}")
+        
+    except Exception as e:
+        logger.error(f"Google OAuth error: {e}")
+      @api_router.delete("/auth/delete-account")
+async def delete_account(password: str = Form(...), confirmation: str = Form(...), current_user: User = Depends(get_current_user)):
+    user = await db.users.find_one({"id": current_user.id})
     if not verify_password(password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Senha incorreta")
+        raise HTTPException(401, "Incorrect password")
     
-    if confirmation != "DELETAR":
-        raise HTTPException(status_code=400, detail="Digite 'DELETAR' para confirmar")
+    if confirmation.upper() != "DELETAR":
+        raise HTTPException(400, "Must type 'DELETAR'")
     
-    # Deletar arquivos do usuário
-    files = await db.files.find({"uploaded_by": current_user.id}, {"_id": 0}).to_list(10000)
+    files = await db.files.find({"uploaded_by": current_user.id}).to_list(10000)
     for file in files:
         await delete_file_from_storage(file)
     await db.files.delete_many({"uploaded_by": current_user.id})
-    
-    # Deletar compartilhamentos
     await db.file_shares.delete_many({"$or": [{"owner_id": current_user.id}, {"shared_with_id": current_user.id}]})
-    
-    # Deletar participações em times
-    await db.teams.update_many(
-        {"members": current_user.id},
-        {"$pull": {"members": current_user.id}}
-    )
-    
-    # Deletar times criados
     await db.teams.delete_many({"owner_id": current_user.id})
-    
-    # Deletar convites
-    await db.team_invites.delete_many({"$or": [{"inviter_id": current_user.id}, {"invitee_username": current_user.username}]})
-    
-    # Deletar usuário
+    await db.teams.update_many({"members": current_user.id}, {"$pull": {"members": current_user.id}})
+    await db.notifications.delete_many({"user_id": current_user.id})
     await db.users.delete_one({"id": current_user.id})
     
-    logger.info(f"🗑️ Conta deletada: {current_user.username}")
-    return {"message": "Conta deletada com sucesso"}
-
+    return {"message": "Account deleted"}
 
 # ============================================================================
-# FILE ROUTES
-# ============================================================================
-
-@api_router.post("/files/upload", response_model=FileMetadata)
-async def upload_file(
-    file: UploadFile = File(...),
-    password: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_user)
-):
-    file_id = str(uuid.uuid4())
-    file_extension = Path(file.filename).suffix
-    filename = f"{file_id}{file_extension}"
-    
-    content = await file.read()
-    file_size = len(content)
-    
-    # Verificar limites
-    await check_user_limits(current_user, file_size)
-    
-    storage_info = await save_file_to_storage(content, filename, file.filename, current_user.id)
-    
-    file_metadata = FileMetadata(
-        id=file_id,
-        filename=filename,
-        original_name=file.filename,
-        file_type=file.content_type or "application/octet-stream",
-        file_size=file_size,
-        uploaded_by=current_user.id,
-        is_private=True,
-        has_password=password is not None,
-        storage_location=storage_info["storage_location"],
-        supabase_path=storage_info.get("supabase_path")
-    )
-    
-    metadata_doc = file_metadata.model_dump()
-    metadata_doc["uploaded_at"] = metadata_doc["uploaded_at"].isoformat()
-    
-    if password:
-        metadata_doc["password_hash"] = get_password_hash(password)
-    
-    await db.files.insert_one(metadata_doc)
-    
-    # Atualizar contadores do usuário
-    await db.users.update_one(
-        {"id": current_user.id},
-        {
-            "$inc": {
-                "storage_used": file_size,
-                "file_count": 1
-            }
-        }
-    )
-    
-    logger.info(f"📤 Upload: {file.filename} por {current_user.username}")
-    
-    return file_metadata
-
-
-@api_router.get("/files", response_model=List[FileMetadata])
-async def get_files(current_user: User = Depends(get_current_user)):
-    query = {} if current_user.role == "admin" else {"uploaded_by": current_user.id}
-    files = await db.files.find(query, {"_id": 0, "password_hash": 0}).to_list(10000)
-    
-    for file in files:
-        if isinstance(file['uploaded_at'], str):
-            file['uploaded_at'] = datetime.fromisoformat(file['uploaded_at'])
-    
-    return files
-
-
-@api_router.get("/files/{file_id}/download")
-async def download_file(file_id: str, current_user: User = Depends(get_current_user)):
-    file_metadata = await db.files.find_one({"id": file_id}, {"_id": 0})
-    if not file_metadata:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    if current_user.role != "admin" and file_metadata["uploaded_by"] != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    file_content = await get_file_from_storage(file_metadata)
-    
-    return StreamingResponse(
-        io.BytesIO(file_content),
-        media_type=file_metadata["file_type"],
-        headers={"Content-Disposition": f'attachment; filename="{file_metadata["original_name"]}"'}
-    )
-
-
-@api_router.delete("/files/{file_id}")
-async def delete_file(file_id: str, current_user: User = Depends(get_current_user)):
-    file_metadata = await db.files.find_one({"id": file_id}, {"_id": 0})
-    if not file_metadata:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    if current_user.role != "admin" and file_metadata["uploaded_by"] != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    await delete_file_from_storage(file_metadata)
-    await db.files.delete_one({"id": file_id})
-    
-    # Atualizar contadores
-    await db.users.update_one(
-        {"id": current_user.id},
-        {
-            "$inc": {
-                "storage_used": -file_metadata["file_size"],
-                "file_count": -1
-            }
-        }
-    )
-    
-    return {"message": "File deleted successfully"}
-
-
-@api_router.get("/user/stats")
-async def get_user_stats(current_user: User = Depends(get_current_user)):
-    files = await db.files.find({"uploaded_by": current_user.id}, {"file_size": 1}).to_list(10000)
-    total_storage = sum(f.get("file_size", 0) for f in files)
-    
-    return {
-        "username": current_user.username,
-        "plan": current_user.plan,
-        "total_files": len(files),
-        "file_count": current_user.file_count,
-        "storage_used": current_user.storage_used,
-        "storage_limit": current_user.storage_limit,
-        "storage_used_mb": round(current_user.storage_used / (1024 * 1024), 2),
-        "storage_limit_mb": round(current_user.storage_limit / (1024 * 1024), 2),
-        "storage_percentage": round((current_user.storage_used / current_user.storage_limit) * 100, 2) if current_user.storage_limit > 0 else 0
-    }
-
-
-# ============================================================================
-# ADMIN ROUTES
-# ============================================================================
-
-@api_router.get("/admin/stats")
-async def get_stats(current_user: User = Depends(get_admin_user)):
-    total_users = await db.users.count_documents({})
-    total_files = await db.files.count_documents({})
-    files = await db.files.find({}, {"file_size": 1}).to_list(10000)
-    total_storage = sum(f.get("file_size", 0) for f in files)
-    settings = await db.settings.find_one({"key": "chat_enabled"})
-    
-    return {
-        "total_users": total_users,
-        "total_files": total_files,
-        "total_storage_bytes": total_storage,
-        "total_storage_mb": round(total_storage / (1024 * 1024), 2),
-        "chat_enabled": settings.get("value", False) if settings else False,
-        "storage_mode": STORAGE_MODE
-    }
-
-
-# ============================================================================
-# CHAT ROUTES
-# ============================================================================
-
-@api_router.get("/chat/enabled")
-async def get_chat_enabled(current_user: User = Depends(get_current_user)):
-    settings = await db.settings.find_one({"key": "chat_enabled"})
-    return {"enabled": settings.get("value", False) if settings else False}
-
-
-@api_router.get("/chat/messages", response_model=List[ChatMessage])
-async def get_chat_messages(current_user: User = Depends(get_current_user)):
-    settings = await db.settings.find_one({"key": "chat_enabled"})
-    if not settings or not settings.get("value", False):
-        if current_user.role != "admin":
-            raise HTTPException(status_code=403, detail="Chat is disabled")
-    
-    messages = await db.chat_messages.find({}, {"_id": 0}).sort("timestamp", -1).limit(100).to_list(100)
-    
-    for msg in messages:
-        if isinstance(msg['timestamp'], str):
-            msg['timestamp'] = datetime.fromisoformat(msg['timestamp'])
-    
-    return list(reversed(messages))
-
-
-@api_router.post("/admin/chat/toggle")
-async def toggle_chat(data: ChatToggle, current_user: User = Depends(get_admin_user)):
-    await db.settings.update_one(
-        {"key": "chat_enabled"},
-        {"$set": {"value": data.enabled}},
-        upsert=True
-    )
-    return {"enabled": data.enabled}
-
-
-# ============================================================================
-# CORS & INCLUDE ROUTER
+# INCLUDE ROUTER
 # ============================================================================
 
 app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=[
-        "https://biblioteca-sigma-gilt.vercel.app",
-        "http://localhost:3000",
-    ],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

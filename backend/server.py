@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFi
 from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware # A importação original é starlette, vamos manter
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -77,7 +77,6 @@ else:
 # Create app
 app = FastAPI()
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -89,7 +88,32 @@ app.add_middleware(
     ],
     allow_methods=["*"],
     allow_headers=["*"],
+    
+# ============================================================================
+# CORREÇÃO CRÍTICA DO CORS APLICADA AQUI, ANTES DE TUDO
+# ============================================================================
+# Adicionamos a URL do Backend (Render) à lista de origens permitidas
+# e movemos a inclusão do middleware para cima.
+# Esta é a correção para o erro "blocked by CORS policy".
+
+origins: List[str] = [
+    # 1. Frontend Vercel (Já existia)
+    "https://biblioteca-sigma-gilt.vercel.app",
+    # 2. Backend Render (NOVO - O Render precisa se autorizar)
+    "https://biblioteca-privada-lfp5.onrender.com",
+    # 3. Localhost (Já existia)
+    "http://localhost:3000",
+    "http://localhost:8000", # Adicionado 8000 por segurança
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+# FIM DA CORREÇÃO CORS
 
 @app.get("/", include_in_schema=False)
 def read_root():
@@ -104,7 +128,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# MODELS
+# MODELS (Mantenha o resto do seu código inalterado)
+# ...
+# ============================================================================
+# O restante do seu código (Modelos, Funções Auxiliares, e todas as Rotas)
+# permanece inalterado.
+# ============================================================================
 # ============================================================================
 
 class User(BaseModel):
@@ -364,6 +393,7 @@ async def delete_file_from_storage(file_metadata: dict):
         if file_path.exists():
             file_path.unlink()
             logger.info(f"🗑️ Arquivo removido localmente")
+<<<<<<< HEAD
 
 # Email
 async def send_bug_report_email(bug_report: BugReport):
@@ -411,6 +441,8 @@ async def send_bug_report_email(bug_report: BugReport):
 # CONTINUAÇÃO DO server.py (PARTE 2)
 # Cole isso logo após a PARTE 1
 
+=======
+>>>>>>> ca7d3a84d4aec19fbf2c500863fff6fd6d3ae624
 # ============================================================================
 # STARTUP
 # ============================================================================
@@ -1269,6 +1301,7 @@ async def delete_file(file_id: str, current_user: User = Depends(get_current_use
     if file_metadata.get("is_deleted"):
         raise HTTPException(status_code=400, detail="File already deleted")
     
+<<<<<<< HEAD
     if current_user.plan == "premium" or current_user.role == "admin":
         # 🆕 PREMIUM: Soft delete (vai pra lixeira)
         await db.files.update_one(
@@ -2990,3 +3023,6 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
+=======
+  
+>>>>>>> ca7d3a84d4aec19fbf2c500863fff6fd6d3ae624

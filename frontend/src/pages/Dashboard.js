@@ -210,3 +210,242 @@ const Dashboard = ({ user, onLogout }) => {
 };
 
 export default Dashboard;
+{/* ================================================ */}
+      {/* MAIN CONTENT */}
+      {/* ================================================ */}
+      <main className="container mx-auto px-4 py-8">
+        
+        {/* 🆕 NOVO: Warning se próximo do limite (Free users) */}
+        {!isPremium && !isAdmin && isNearLimit && (
+          <div className="mb-6 p-4 bg-gradient-to-r from-orange-50 to-red-50 border-l-4 border-orange-500 rounded-lg shadow-md">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <TrendingUp className="w-6 h-6 text-orange-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-orange-900 mb-1">
+                  ⚠️ Armazenamento Quase Cheio!
+                </h3>
+                <p className="text-sm text-orange-700 mb-3">
+                  Você está usando {storagePercentage}% do seu espaço. 
+                  Faça upgrade para Premium e ganhe 5 GB de armazenamento!
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => navigate("/upgrade")}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                >
+                  <Crown className="w-4 h-4 mr-2" />
+                  Ver Planos Premium
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================ */}
+        {/* TABS */}
+        {/* ================================================ */}
+        <Tabs defaultValue="files" className="w-full">
+          
+          {/* Tab List */}
+          <TabsList className="glass mb-6 p-1 shadow-lg">
+            <TabsTrigger 
+              value="files" 
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all" 
+              data-testid="files-tab"
+            >
+              <Files className="w-4 h-4" />
+              <span className="hidden sm:inline">Meus Arquivos</span>
+              <span className="sm:hidden">Arquivos</span>
+              {stats?.total_files > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {stats.total_files}
+                </Badge>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger 
+              value="shared" 
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all" 
+              data-testid="shared-tab"
+            >
+              <Share2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Compartilhados</span>
+              <span className="sm:hidden">Shared</span>
+            </TabsTrigger>
+
+            {/* 🆕 Teams Tab */}
+            <TabsTrigger 
+              value="teams" 
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all" 
+              data-testid="teams-tab"
+            >
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Times</span>
+              <span className="sm:hidden">Teams</span>
+              {!isPremium && !isAdmin && (
+                <Crown className="w-3 h-3 text-yellow-500" />
+              )}
+            </TabsTrigger>
+
+            {/* Chat Tab (se habilitado) */}
+            {showChatTab && (
+              <TabsTrigger 
+                value="chat" 
+                className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all" 
+                data-testid="chat-tab"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span className="hidden sm:inline">Chat</span>
+              </TabsTrigger>
+            )}
+
+            {/* Admin/User Panel Tab */}
+            {isAdmin ? (
+              <TabsTrigger 
+                value="admin" 
+                className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all" 
+                data-testid="admin-tab"
+              >
+                <Shield className="w-4 h-4" />
+                <span className="hidden sm:inline">Painel Admin</span>
+                <span className="sm:hidden">Admin</span>
+              </TabsTrigger>
+            ) : (
+              <TabsTrigger 
+                value="profile" 
+                className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all" 
+                data-testid="profile-tab"
+              >
+                <User className="w-4 h-4" />
+                <span className="hidden sm:inline">Meu Perfil</span>
+                <span className="sm:hidden">Perfil</span>
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          {/* ================================================ */}
+          {/* TAB CONTENTS */}
+          {/* ================================================ */}
+
+          {/* Meus Arquivos */}
+          <TabsContent value="files" data-testid="files-content" className="mt-0">
+            <FileLibrary
+              files={files}
+              loading={loading}
+              uploading={uploading}
+              onUpload={handleUpload}
+              onDelete={handleDeleteFile}
+              onDownload={handleDownloadFile}
+              onShare={handleShareFile}
+              isAdmin={isAdmin}
+              isPremium={isPremium}
+              user={user}
+              stats={stats}
+            />
+          </TabsContent>
+
+          {/* 🆕 NOVO: Arquivos Compartilhados */}
+          <TabsContent value="shared" data-testid="shared-content" className="mt-0">
+            <SharedFiles user={user} />
+          </TabsContent>
+
+          {/* 🆕 Times */}
+          <TabsContent value="teams" data-testid="teams-content" className="mt-0">
+            <Teams user={user} isPremium={isPremium} isAdmin={isAdmin} />
+          </TabsContent>
+
+          {/* Chat */}
+          {showChatTab && (
+            <TabsContent value="chat" data-testid="chat-content" className="mt-0">
+              <ChatPanel 
+                user={user} 
+                chatEnabled={chatEnabled} 
+                onChatToggle={checkChatEnabled}
+                isAdmin={isAdmin}
+              />
+            </TabsContent>
+          )}
+
+          {/* Admin Panel */}
+          {isAdmin ? (
+            <TabsContent value="admin" data-testid="admin-content" className="mt-0">
+              <AdminPanel 
+                onChatToggle={checkChatEnabled}
+                refreshData={loadInitialData}
+              />
+            </TabsContent>
+          ) : (
+            <TabsContent value="profile" data-testid="profile-content" className="mt-0">
+              <UserPanel 
+                user={user} 
+                stats={stats}
+                refreshStats={loadUserStats}
+                isPremium={isPremium}
+              />
+            </TabsContent>
+          )}
+        </Tabs>
+      </main>
+
+      {/* ================================================ */}
+      {/* FOOTER */}
+      {/* ================================================ */}
+      <footer className="mt-auto py-8 border-t border-white/20 backdrop-blur-sm" data-testid="footer">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            {/* Copyright */}
+            <div className="text-center md:text-left">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                © {new Date().getFullYear()} Biblioteca Privada
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                Desenvolvido com 💜 por{" "}
+                <span className="font-semibold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                  Masterotaku
+                </span>
+              </p>
+            </div>
+
+            {/* Links */}
+            <div className="flex items-center gap-4 text-sm">
+              <button
+                onClick={() => navigate("/bug-report")}
+                className="text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors flex items-center gap-1"
+              >
+                <Bug className="w-4 h-4" />
+                Reportar Bug
+              </button>
+              
+              {!isPremium && !isAdmin && (
+                <button
+                  onClick={() => navigate("/upgrade")}
+                  className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium transition-colors flex items-center gap-1"
+                >
+                  <Crown className="w-4 h-4" />
+                  Seja Premium
+                </button>
+              )}
+
+              <button
+                onClick={() => navigate("/settings")}
+                className="text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors flex items-center gap-1"
+              >
+                <SettingsIcon className="w-4 h-4" />
+                Configurações
+              </button>
+            </div>
+
+            {/* Version */}
+            <div className="text-xs text-gray-400 dark:text-gray-600">
+              v2.0.0
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default Dashboard;

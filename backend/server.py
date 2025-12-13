@@ -1299,7 +1299,6 @@ async def delete_file(file_id: str, current_user: User = Depends(get_current_use
     if file_metadata.get("is_deleted"):
         raise HTTPException(status_code=400, detail="File already deleted")
     
-<<<<<<< HEAD
     if current_user.plan == "premium" or current_user.role == "admin":
         # 🆕 PREMIUM: Soft delete (vai pra lixeira)
         await db.files.update_one(

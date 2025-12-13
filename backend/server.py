@@ -394,7 +394,6 @@ async def delete_file_from_storage(file_metadata: dict):
         if file_path.exists():
             file_path.unlink()
             logger.info(f"🗑️ Arquivo removido localmente")
-<<<<<<< HEAD
 
 # Email
 async def send_bug_report_email(bug_report: BugReport):
@@ -442,8 +441,6 @@ async def send_bug_report_email(bug_report: BugReport):
 # CONTINUAÇÃO DO server.py (PARTE 2)
 # Cole isso logo após a PARTE 1
 
-=======
->>>>>>> ca7d3a84d4aec19fbf2c500863fff6fd6d3ae624
 # ============================================================================
 # STARTUP
 # ============================================================================

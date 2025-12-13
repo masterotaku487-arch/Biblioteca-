@@ -412,3 +412,4 @@ const SharedFiles = ({ user }) => {
 };
 
 export default SharedFiles;
+

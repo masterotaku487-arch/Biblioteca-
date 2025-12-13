@@ -73,6 +73,43 @@ if STORAGE_MODE == "supabase":
         print(f"✅ Bucket: {SUPABASE_BUCKET}")
 else:
     print(f"✅ Storage local: {UPLOAD_DIR}")
+# --- INÍCIO DO BLOCO DE MODELOS PARA CORRIGIR 'NameError' ---
+# Este bloco deve ser colado após todos os 'imports' e antes de 'app = FastAPI()'
+
+class User(BaseModel):
+    # Campos base do modelo de Usuário
+    id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+    username: str
+    email: EmailStr
+    hashed_password: Optional[str] = None
+    role: str = "user"
+    plan: str = "free"
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+    )
+
+class UserInDB(User):
+    # Modelo para armazenamento, usado na autenticação
+    hashed_password: str
+
+
+class Notification(BaseModel):
+    # Modelo usado na rota /notifications (Linha 2210)
+    id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()), alias="_id")
+    user_id: str
+    message: str
+    link: Optional[str] = None
+    read: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda dt: dt.isoformat()},
+    )
+# --- FIM DO BLOCO DE MODELOS ---
 
 # Create app
 app = FastAPI()

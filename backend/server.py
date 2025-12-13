@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Dict
+from models import Notification
+from models import User, Notification
 import uuid
 from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext

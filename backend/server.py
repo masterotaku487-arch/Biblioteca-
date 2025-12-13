@@ -88,6 +88,7 @@ app.add_middleware(
     ],
     allow_methods=["*"],
     allow_headers=["*"],
+)#
     
 # ============================================================================
 # CORREÇÃO CRÍTICA DO CORS APLICADA AQUI, ANTES DE TUDO

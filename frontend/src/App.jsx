@@ -11,7 +11,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import SharedFiles from './pages/SharedFiles';
 import Teams from './pages/Teams';
-import Upgrade from './pages/Upgrade';
+import UpgradePage from './pages/UpgradePage';
 import Settings from './pages/Settings';
 import GoogleCallback from './pages/GoogleCallback'; // 🆕 NOVO
 import PaymentSuccess from './pages/PaymentSuccess'; // 🆕 NOVO

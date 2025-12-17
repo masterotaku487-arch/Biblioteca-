@@ -3,15 +3,13 @@ import axios from "axios";
 import { API } from "@/App";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Shield, Users, HardDrive, Trash2, Files, Download, MessageCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Shield, Users, HardDrive, Files, MessageCircle, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 const AdminPanel = ({ onChatToggle }) => {
-  const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -19,85 +17,46 @@ const AdminPanel = ({ onChatToggle }) => {
 
   const loadData = async () => {
     try {
-      const [usersRes, statsRes] = await Promise.all([
-        axios.get(`${API}/admin/users`),
-        axios.get(`${API}/admin/stats`),
-      ]);
-      setUsers(usersRes.data);
+      const token = localStorage.getItem("token");
+      const statsRes = await axios.get(`${API}/admin/stats`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       setStats(statsRes.data);
+      toast.success("Dados carregados com sucesso!");
     } catch (error) {
-      toast.error("Erro ao carregar dados");
+      console.error("Erro ao carregar dados:", error);
+      toast.error("Erro ao carregar dados do painel");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteUser = async (userId, username) => {
-    if (!confirm(`Tem certeza que deseja deletar o usuário ${username}?`)) {
-      return;
-    }
-
-    try {
-      await axios.delete(`${API}/admin/users/${userId}`);
-      toast.success("Usuário deletado com sucesso!");
-      loadData();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Erro ao deletar usuário");
-    }
-  };
-
-  const handleDownloadAll = async () => {
-    setDownloading(true);
+  const handleToggleChat = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API}/admin/download-all`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error("Download failed");
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `backup_completo_${new Date().toISOString().split('T')[0]}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success("Backup baixado com sucesso!");
+      const newStatus = !stats?.chat_enabled;
+      
+      await axios.post(
+        `${API}/admin/chat/toggle`,
+        { enabled: newStatus },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      toast.success(`Chat ${newStatus ? "ativado" : "desativado"} com sucesso!`);
+      loadData(); // Recarregar dados
+      
+      if (onChatToggle) {
+        onChatToggle(newStatus);
+      }
     } catch (error) {
-      toast.error("Erro ao baixar arquivos");
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const handleDownloadSourceCode = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API}/admin/download-source-code`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error("Download failed");
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `codigo_fonte_site.zip`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success("Código-fonte baixado com sucesso!");
-    } catch (error) {
-      toast.error("Erro ao baixar código-fonte");
+      console.error("Erro ao alternar chat:", error);
+      toast.error("Erro ao alterar status do chat");
     }
   };
 
@@ -111,6 +70,15 @@ const AdminPanel = ({ onChatToggle }) => {
 
   return (
     <div className="space-y-6">
+      {/* Aviso de manutenção Google OAuth */}
+      <Alert className="bg-orange-50 border-orange-300">
+        <AlertTriangle className="h-4 w-4 text-orange-600" />
+        <AlertDescription className="text-orange-800">
+          <strong>Login Google em Manutenção:</strong> O sistema de autenticação via Google OAuth 
+          está temporariamente desabilitado. Os usuários devem usar login tradicional.
+        </AlertDescription>
+      </Alert>
+
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="glass border-0 shadow-lg" data-testid="stats-users">
@@ -121,7 +89,9 @@ const AdminPanel = ({ onChatToggle }) => {
               </div>
               <div>
                 <p className="text-sm text-gray-600">Usuários</p>
-                <p className="text-2xl font-bold text-gray-900" data-testid="total-users">{stats?.total_users || 0}</p>
+                <p className="text-2xl font-bold text-gray-900" data-testid="total-users">
+                  {stats?.total_users || 0}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -135,7 +105,9 @@ const AdminPanel = ({ onChatToggle }) => {
               </div>
               <div>
                 <p className="text-sm text-gray-600">Arquivos</p>
-                <p className="text-2xl font-bold text-gray-900" data-testid="total-files">{stats?.total_files || 0}</p>
+                <p className="text-2xl font-bold text-gray-900" data-testid="total-files">
+                  {stats?.total_files || 0}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -149,7 +121,9 @@ const AdminPanel = ({ onChatToggle }) => {
               </div>
               <div>
                 <p className="text-sm text-gray-600">Armazenamento</p>
-                <p className="text-2xl font-bold text-gray-900" data-testid="total-storage">{stats?.total_storage_mb || 0} MB</p>
+                <p className="text-2xl font-bold text-gray-900" data-testid="total-storage">
+                  {stats?.total_storage_mb || 0} MB
+                </p>
               </div>
             </div>
           </CardContent>
@@ -186,92 +160,124 @@ const AdminPanel = ({ onChatToggle }) => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Toggle Chat */}
             <div className="space-y-2">
               <Button
-                onClick={handleDownloadAll}
-                disabled={downloading}
-                className="w-full bg-purple-600 hover:bg-purple-700"
-                data-testid="download-all-button"
+                onClick={handleToggleChat}
+                className={`w-full ${
+                  stats?.chat_enabled 
+                    ? "bg-red-600 hover:bg-red-700" 
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
+                data-testid="toggle-chat-button"
               >
-                <Download className="w-4 h-4 mr-2" />
-                {downloading ? "Baixando..." : "Baixar Todos os Arquivos"}
+                <MessageCircle className="w-4 h-4 mr-2" />
+                {stats?.chat_enabled ? "Desativar Chat" : "Ativar Chat"}
               </Button>
               <p className="text-xs text-gray-500">
-                Backup de todos os arquivos dos usuários organizados por pasta.
+                {stats?.chat_enabled 
+                  ? "O chat global está ativo para todos os usuários"
+                  : "O chat global está desativado"}
               </p>
             </div>
-            
+
+            {/* Storage Mode */}
             <div className="space-y-2">
-              <Button
-                onClick={handleDownloadSourceCode}
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                data-testid="download-source-code-button"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Baixar Código-Fonte do Site
-              </Button>
+              <div className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">
+                    Modo de Armazenamento
+                  </span>
+                </div>
+                <p className="text-lg font-bold text-blue-700 mt-1">
+                  {stats?.storage_mode === "supabase" ? "☁️ Supabase" : "💾 Local"}
+                </p>
+              </div>
               <p className="text-xs text-gray-500">
-                Download completo do código-fonte (frontend + backend).
+                {stats?.storage_mode === "supabase" 
+                  ? "Arquivos armazenados na nuvem (Supabase)"
+                  : "Arquivos armazenados localmente no servidor"}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Users Table */}
+      {/* System Info */}
       <Card className="glass border-0 shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2" style={{fontFamily: 'Manrope'}}>
-            <Users className="w-5 h-5" />
-            Gerenciar Usuários
+            <Shield className="w-5 h-5" />
+            Informações do Sistema
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table data-testid="users-table">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Usuário</TableHead>
-                <TableHead>Função</TableHead>
-                <TableHead>Data de Criação</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id} data-testid={`user-row-${user.id}`}>
-                  <TableCell className="font-medium" data-testid={`user-username-${user.id}`}>{user.username}</TableCell>
-                  <TableCell>
-                    {user.role === "admin" ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800" data-testid={`user-role-${user.id}`}>
-                        <Shield className="w-3 h-3 mr-1" />
-                        Admin
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800" data-testid={`user-role-${user.id}`}>
-                        Usuário
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell data-testid={`user-created-${user.id}`}>
-                    {new Date(user.created_at).toLocaleDateString("pt-BR")}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {user.role !== "admin" && (
-                      <Button
-                        data-testid={`delete-user-button-${user.id}`}
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDeleteUser(user.id, user.username)}
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Deletar
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="font-semibold text-sm text-gray-600 mb-2">Estatísticas Gerais</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Total de Usuários:</span>
+                  <span className="font-semibold">{stats?.total_users || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Total de Arquivos:</span>
+                  <span className="font-semibold">{stats?.total_files || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Armazenamento Total:</span>
+                  <span className="font-semibold">{stats?.total_storage_mb || 0} MB</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Armazenamento (GB):</span>
+                  <span className="font-semibold">
+                    {((stats?.total_storage_mb || 0) / 1024).toFixed(2)} GB
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-sm text-gray-600 mb-2">Configurações Ativas</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Chat Global:</span>
+                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                    stats?.chat_enabled 
+                      ? "bg-green-100 text-green-700" 
+                      : "bg-red-100 text-red-700"
+                  }`}>
+                    {stats?.chat_enabled ? "Ativado" : "Desativado"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Storage Mode:</span>
+                  <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-700">
+                    {stats?.storage_mode === "supabase" ? "Supabase" : "Local"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Login Google:</span>
+                  <span className="px-2 py-1 rounded text-xs font-semibold bg-orange-100 text-orange-700">
+                    Em Manutenção
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Refresh Button */}
+          <div className="mt-6 pt-6 border-t">
+            <Button
+              onClick={loadData}
+              variant="outline"
+              className="w-full"
+              data-testid="refresh-stats-button"
+            >
+              🔄 Atualizar Estatísticas
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

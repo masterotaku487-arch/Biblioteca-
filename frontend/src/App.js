@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import LoginPage from "@/pages/LoginPage";
 import Dashboard from "@/pages/Dashboard";
+import GoogleCallback from "@/pages/GoogleCallback";
 import { Toaster } from "@/components/ui/sonner";
 
 // CORREÇÃO CRÍTICA: 
@@ -99,6 +100,11 @@ function App() {
               )
             }
           />
+          <Route 
+            path="/auth/google/success" 
+            element={<GoogleCallback onLogin={handleLogin} />} 
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </div>
@@ -106,4 +112,3 @@ function App() {
 }
 
 export default App;
-

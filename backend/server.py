@@ -3,6 +3,8 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from authlib.integrations.starlette_client import OAuth
+from starlette.requests import Request  # Se já não tiver
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -42,6 +44,21 @@ UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "uploads")
+# Google OAuth configuration
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+
+# OAuth setup
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
 
 if STORAGE_MODE == "supabase":
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -84,6 +101,9 @@ class User(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     username: str
+    email: Optional[str] = None  # ← NOVO
+    google_id: Optional[str] = None  # ← NOVO
+    avatar_url: Optional[str] = None  # ← NOVO
     role: str = "user"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -344,13 +364,27 @@ async def login(user_data: UserLogin):
     
     return Token(access_token=access_token, token_type="bearer", user=User(**user))
 
-
 @api_router.get("/auth/me", response_model=User)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-# File routes
+# Google OAuth routes  # ← NOVO BLOCO
+@api_router.get("/auth/google/login")
+async def google_login(request: Request):
+    """Inicia o fluxo de login com Google"""
+    redirect_uri = f"{BACKEND_URL}/api/auth/google/callback"
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+@api_router.get("/auth/google/callback")
+async def google_callback(request: Request):
+    """Callback do Google OAuth"""
+    # ... todo o código da função
+    ...
+
+
+# File routes  # ← CÓDIGO QUE JÁ EXISTE
 @api_router.post("/files/upload", response_model=FileMetadata)
 async def upload_file(
     file: UploadFile = File(...),

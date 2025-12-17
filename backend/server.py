@@ -380,8 +380,81 @@ async def google_login(request: Request):
 @api_router.get("/auth/google/callback")
 async def google_callback(request: Request):
     """Callback do Google OAuth"""
-    # ... todo o código da função
-    ...
+    try:
+        # Obter token do Google
+        token = await oauth.google.authorize_access_token(request)
+        user_info = token.get('userinfo')
+        
+        if not user_info:
+            raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+        
+        google_id = user_info.get('sub')
+        email = user_info.get('email')
+        name = user_info.get('name', email.split('@')[0] if email else 'user')
+        avatar_url = user_info.get('picture')
+        
+        if not google_id or not email:
+            raise HTTPException(status_code=400, detail="Invalid user info from Google")
+        
+        # Verificar se usuário já existe
+        existing_user = await db.users.find_one({
+            "$or": [
+                {"google_id": google_id},
+                {"email": email}
+            ]
+        }, {"_id": 0})
+        
+        if existing_user:
+            if not existing_user.get("google_id"):
+                await db.users.update_one(
+                    {"email": email},
+                    {"$set": {
+                        "google_id": google_id,
+                        "avatar_url": avatar_url
+                    }}
+                )
+            user_data = existing_user
+        else:
+            # Criar novo usuário
+            base_username = email.split('@')[0]
+            username = base_username
+            counter = 1
+            
+            while await db.users.find_one({"username": username}):
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            new_user = User(
+                username=username,
+                email=email,
+                google_id=google_id,
+                avatar_url=avatar_url,
+                role="user"
+            )
+            
+            user_doc = new_user.model_dump()
+            user_doc["created_at"] = user_doc["created_at"].isoformat()
+            user_doc["password_hash"] = None
+            
+            await db.users.insert_one(user_doc)
+            user_data = user_doc
+            
+            logger.info(f"✅ Novo usuário via Google: {username} ({email})")
+        
+        # Criar token JWT
+        access_token = create_access_token(
+            data={"sub": user_data["username"]},
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        
+        # Redirecionar para frontend
+        redirect_url = f"{FRONTEND_URL}/auth/google/success?token={access_token}"
+        return RedirectResponse(url=redirect_url)
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no callback do Google: {str(e)}")
+        error_url = f"{FRONTEND_URL}/login?error=google_auth_failed"
+        return RedirectResponse(url=error_url)
 
 
 # File routes  # ← CÓDIGO QUE JÁ EXISTE

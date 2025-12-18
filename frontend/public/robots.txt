@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+
+Sitemap: [https://biblioteca-sigma-gilt.vercel.app/sitemap.xml](https://biblioteca-sigma-gilt.vercel.app/sitemap.xml)

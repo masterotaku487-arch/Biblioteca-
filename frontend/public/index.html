@@ -1,73 +1,43 @@
 <!doctype html>
-  <html lang="pt-br">
-      <head>
-        <!-- No cabeçalho (head) do teu index.html -->
+<html lang="pt-br">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#000000" />
 
-<!-- Ícone padrão para a aba do navegador -->
-<link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon.png" />
-
-<!-- Ícone para iPhones/iOS -->
-<link rel="apple-touch-icon" href="%PUBLIC_URL%/favicon.png" />
-
-<!-- Imagem que aparece quando partilhas o link (WhatsApp/Redes Sociais) -->
-<meta property="og:image" content="%PUBLIC_URL%/favicon.png" />
+        <title>Biblioteca Privada | Armazenamento e Gestão de Arquivos Pessoais</title>
+        <meta property="og:site_name" content="Biblioteca Privada" />
+        <link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon.png" />
+        <link rel="apple-touch-icon" href="%PUBLIC_URL%/favicon.png" />
         
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <meta name="theme-color" content="#000000" />
-          
-          <!-- 1. TÍTULO: É a primeira coisa que o Google mostra na busca -->
-          <title>Biblioteca Privada | Armazenamento e Gestão de Arquivos Pessoais</title>
-          
-          <!-- 2. DESCRIÇÃO: O texto que aparece logo abaixo do título no Google -->
-          <meta name="description" content="Acesse sua Biblioteca Privada de forma segura. Armazenamento pessoal para gestão de documentos e arquivos com privacidade total." />
-          
-          <!-- 3. PALAVRAS-CHAVE: Termos que as pessoas digitam para te achar -->
-          <meta name="keywords" content="biblioteca privada, guardar arquivos, armazenamento seguro, documentos pessoais, nuvem privada" />
-        <meta name="description" content="Armazene e compartilhe arquivos de forma segura. 100MB grátis!" />
-  <meta name="keywords" content="armazenamento, arquivos, nuvem, compartilhamento, biblioteca" />
-  <meta name="author" content="Biblioteca Privada" />
-  
-  <!-- Open Graph (Facebook, WhatsApp) -->
-  <meta property="og:title" content="Biblioteca Privada - Armazenamento Seguro" />
-  <meta property="og:description" content="Sistema seguro de armazenamento de arquivos" />
-  <meta property="og:image" content="https://biblioteca-sigma-gilt.vercel.app/logo.png" />
-  <meta property="og:url" content="https://biblioteca-sigma-gilt.vercel.app" />
-  
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Biblioteca Privada" />
-  <meta name="twitter:description" content="Armazene arquivos de forma segura" />
-          
-          <!-- 4. ROBOTS: Diz explicitamente para o Google indexar esta página -->
-          <meta name="robots" content="index, follow" />
-          
-          <!-- 5. CANONICAL: Evita que o Google ache que o seu site é conteúdo duplicado -->
-          <link rel="canonical" href="https://biblioteca-sigma-gilt.vercel.app/" />
-  
-          <!-- Open Graph (Para o site aparecer com título e descrição no WhatsApp/Redes Sociais) -->
-          <meta property="og:title" content="Biblioteca Privada - Gestão de Arquivos" />
-          <meta property="og:description" content="Seu espaço seguro e privado para armazenamento de arquivos." />
-          <meta property="og:url" content="https://biblioteca-sigma-gilt.vercel.app/" />
-      </head>
-    <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-WR34RNFCZS"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+        <meta name="description" content="Acesse sua Biblioteca Privada de forma segura. Armazenamento pessoal para gestão de documentos e arquivos com privacidade total. 100MB grátis!" />
+        <meta name="keywords" content="biblioteca privada, guardar arquivos, armazenamento seguro, documentos pessoais, nuvem privada" />
+        <meta name="author" content="Biblioteca Privada" />
+        <meta name="robots" content="index, follow" />
+        <link rel="canonical" href="https://biblioteca-sigma-gilt.vercel.app/" />
 
-  gtag('config', 'G-WR34RNFCZS');
-</script>
-      <body>
-          <noscript>Você precisa habilitar o JavaScript para rodar este aplicativo.</noscript>
-          
-          <!-- 6. HIERARQUIA DE TEXTO (Importante para o robô do Google) -->
-          <!-- Mesmo que o React renderize tudo no root, ter um H1 oculto ou visível ajuda muito -->
-          <h1 style="display:none;">Biblioteca Privada - Armazenamento Seguro de Arquivos</h1>
-  
-          <div id="root"></div>
-      </body>
-  </html>
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content="Biblioteca Privada - Gestão de Arquivos" />
+        <meta property="og:description" content="Seu espaço seguro e privado para armazenamento de arquivos." />
+        <meta property="og:image" content="%PUBLIC_URL%/favicon.png" />
+        <meta property="og:url" content="https://biblioteca-sigma-gilt.vercel.app/" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Biblioteca Privada" />
+        <meta name="twitter:description" content="Armazene arquivos de forma segura" />
 
-  
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-WR34RNFCZS"></script>
+        <script>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-WR34RNFCZS');
+        </script>
+    </head>
+    <body>
+        <noscript>Você precisa habilitar o JavaScript para rodar este aplicativo.</noscript>
+        
+        <h1 style="display:none;">Biblioteca Privada - Armazenamento Seguro de Arquivos</h1>
+
+        <div id="root"></div>
+    </body>
+</html>

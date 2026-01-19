@@ -560,6 +560,33 @@ async def delete_file(file_id: str, current_user: User = Depends(get_admin_user)
     await db.files.delete_one({"id": file_id})
     
     return {"message": "File deleted successfully"}
+    @api_router.get("/chat/messages", response_model=List[ChatMessage])
+async def get_chat_messages(current_user: User = Depends(get_current_user)):
+    """Busca as últimas 100 mensagens do chat"""
+    messages = await db.chat_messages.find({}, {"_id": 0}).sort("timestamp", 1).to_list(100)
+    return messages
+
+@api_router.get("/chat/status")
+async def get_chat_status():
+    """Verifica se o chat está ativo ou não"""
+    settings = await db.settings.find_one({"key": "chat_enabled"})
+    return {"enabled": settings["value"] if settings else False}
+
+@api_router.post("/chat/toggle")
+async def toggle_chat(config: ChatToggle, current_user: User = Depends(get_admin_user)):
+    """Ativa ou desativa o chat (Apenas Admin)"""
+    await db.settings.update_one(
+        {"key": "chat_enabled"},
+        {"$set": {"value": config.enabled}},
+        upsert=True
+    )
+    return {"status": "success", "enabled": config.enabled}
+
+@api_router.delete("/chat/clear")
+async def clear_chat(current_user: User = Depends(get_admin_user)):
+    """Limpa todas as mensagens (Apenas Admin)"""
+    await db.chat_messages.delete_many({})
+    return {"status": "success", "message": "Chat limpo com sucesso"}
 
 
 @api_router.get("/user/stats")

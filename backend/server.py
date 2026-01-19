@@ -4,7 +4,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from authlib.integrations.starlette_client import OAuth
-from starlette.requests import Request  # Se já não tiver
+from starlette.requests import Request
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -44,6 +44,7 @@ UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "uploads")
+
 # Google OAuth configuration
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
@@ -75,18 +76,11 @@ active_connections: Set[WebSocket] = set()
 
 # Create app
 app = FastAPI()
-# --- ADIÇÃO PARA CORRIGIR O ERRO 404 DO RENDER ---
+
 @app.get("/", include_in_schema=False)
 def read_root():
-    """
-    Endpoint de checagem de saúde (Health Check).
-    Corrige o INFO: "GET / HTTP/1.1" 404 Not Found do Render.
-    """
     return {"status": "ok", "service": "biblioteca-backend", "message": "Service is running fine."}
-# --------------------------------------------------
 
-api_router = APIRouter(prefix="/api")
-# ... resto do código ...
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(
@@ -103,25 +97,9 @@ class User(BaseModel):
     username: str
     email: Optional[str] = None
     google_id: Optional[str] = None
-    discord_id: Optional[str] = None  # ← NOVO
-    discriminator: Optional[str] = None  # ← NOVO
+    discord_id: Optional[str] = None
+    discriminator: Optional[str] = None
     avatar_url: Optional[str] = None
-    role: str = "user"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    class DiscordAuthRequest(BaseModel):
-    discordId: str
-    email: str
-    username: str
-    avatar: str
-    discriminator: str
-    
-class User(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    username: str
-    email: Optional[str] = None  # ← NOVO
-    google_id: Optional[str] = None  # ← NOVO
-    avatar_url: Optional[str] = None  # ← NOVO
     role: str = "user"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -134,6 +112,14 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     username: str
     password: str
+
+
+class DiscordAuthRequest(BaseModel):
+    discordId: str
+    email: str
+    username: str
+    avatar: str
+    discriminator: str
 
 
 class Token(BaseModel):
@@ -176,90 +162,58 @@ class ChatToggle(BaseModel):
 
 # Supabase Storage Helper Functions
 async def upload_to_supabase(file_content: bytes, file_path: str) -> str:
-    """Upload file to Supabase Storage"""
     url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
-    
     headers = {
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/octet-stream"
     }
-    
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(url, content=file_content, headers=headers)
-        
         if response.status_code not in [200, 201]:
             logger.error(f"Supabase upload error: {response.text}")
             raise Exception(f"Upload failed: {response.status_code}")
-        
         return file_path
 
 
 async def download_from_supabase(file_path: str) -> bytes:
-    """Download file from Supabase Storage"""
     url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
-    
-    headers = {
-        "Authorization": f"Bearer {SUPABASE_KEY}"
-    }
-    
+    headers = {"Authorization": f"Bearer {SUPABASE_KEY}"}
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(url, headers=headers)
-        
         if response.status_code != 200:
             logger.error(f"Supabase download error: {response.text}")
             raise Exception(f"Download failed: {response.status_code}")
-        
         return response.content
 
 
 async def delete_from_supabase(file_path: str):
-    """Delete file from Supabase Storage"""
     url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{file_path}"
-    
-    headers = {
-        "Authorization": f"Bearer {SUPABASE_KEY}"
-    }
-    
+    headers = {"Authorization": f"Bearer {SUPABASE_KEY}"}
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.delete(url, headers=headers)
-        
         if response.status_code not in [200, 204]:
             logger.error(f"Supabase delete error: {response.text}")
 
 
 # Storage Helper Functions
 async def save_file_to_storage(file_content: bytes, filename: str, original_name: str, uploaded_by: str) -> dict:
-    """Save file to configured storage"""
-    
     if STORAGE_MODE == "supabase":
         try:
             file_path = f"{uploaded_by}/{filename}"
             await upload_to_supabase(file_content, file_path)
             logger.info(f"☁️ Arquivo salvo no Supabase: {file_path}")
-            return {
-                "storage_location": "supabase",
-                "supabase_path": file_path,
-                "filename": filename
-            }
+            return {"storage_location": "supabase", "supabase_path": file_path, "filename": filename}
         except Exception as e:
             logger.error(f"❌ Erro no Supabase: {e}. Usando local.")
     
-    # Local storage (fallback)
     file_path = UPLOAD_DIR / filename
     async with aiofiles.open(file_path, 'wb') as out_file:
         await out_file.write(file_content)
-    
     logger.info(f"💾 Arquivo salvo localmente: {file_path}")
-    return {
-        "storage_location": "local",
-        "supabase_path": None,
-        "filename": filename
-    }
+    return {"storage_location": "local", "supabase_path": None, "filename": filename}
 
 
 async def get_file_from_storage(file_metadata: dict) -> bytes:
-    """Retrieve file from storage"""
-    
     if file_metadata.get("storage_location") == "supabase":
         try:
             return await download_from_supabase(file_metadata["supabase_path"])
@@ -267,18 +221,14 @@ async def get_file_from_storage(file_metadata: dict) -> bytes:
             logger.error(f"❌ Erro ao baixar do Supabase: {e}")
             raise HTTPException(status_code=404, detail="File not found")
     
-    # Local storage
     file_path = UPLOAD_DIR / file_metadata["filename"]
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
-    
     async with aiofiles.open(file_path, 'rb') as f:
         return await f.read()
 
 
 async def delete_file_from_storage(file_metadata: dict):
-    """Delete file from storage"""
-    
     if file_metadata.get("storage_location") == "supabase":
         try:
             await delete_from_supabase(file_metadata["supabase_path"])
@@ -382,24 +332,22 @@ async def login(user_data: UserLogin):
     
     return Token(access_token=access_token, token_type="bearer", user=User(**user))
 
+
 @api_router.get("/auth/me", response_model=User)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-# Google OAuth routes  # ← NOVO BLOCO
+# Google OAuth routes
 @api_router.get("/auth/google/login")
 async def google_login(request: Request):
-    """Inicia o fluxo de login com Google"""
     redirect_uri = f"{BACKEND_URL}/api/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
 @api_router.get("/auth/google/callback")
 async def google_callback(request: Request):
-    """Callback do Google OAuth"""
     try:
-        # Obter token do Google
         token = await oauth.google.authorize_access_token(request)
         user_info = token.get('userinfo')
         
@@ -413,103 +361,19 @@ async def google_callback(request: Request):
         
         if not google_id or not email:
             raise HTTPException(status_code=400, detail="Invalid user info from Google")
-            # Discord OAuth route - NOVO
-@api_router.post("/auth/discord")
-async def discord_auth(data: DiscordAuthRequest):
-    """Autenticação com Discord"""
-    try:
-        # Busca usuário pelo discord_id
+        
         existing_user = await db.users.find_one({
-            "$or": [
-                {"discord_id": data.discordId},
-                {"email": data.email}
-            ]
-        }, {"_id": 0})
-        
-        if existing_user:
-            # Atualiza dados do usuário existente
-            await db.users.update_one(
-                {"discord_id": data.discordId},
-                {"$set": {
-                    "username": data.username,
-                    "avatar_url": data.avatar,
-                    "discriminator": data.discriminator,
-                    "email": data.email
-                }}
-            )
-            user_data = existing_user
-            logger.info(f"✅ Login Discord: {data.username}")
-        else:
-            # Criar novo usuário
-            base_username = data.username
-            username = base_username
-            counter = 1
-            
-            # Garante username único
-            while await db.users.find_one({"username": username}):
-                username = f"{base_username}{counter}"
-                counter += 1
-            
-            new_user = User(
-                username=username,
-                email=data.email,
-                discord_id=data.discordId,
-                discriminator=data.discriminator,
-                avatar_url=data.avatar,
-                role="user"
-            )
-            
-            user_doc = new_user.model_dump()
-            user_doc["created_at"] = user_doc["created_at"].isoformat()
-            user_doc["password_hash"] = None  # Login social não tem senha
-            
-            await db.users.insert_one(user_doc)
-            user_data = user_doc
-            
-            logger.info(f"✅ Novo usuário Discord: {username} ({data.email})")
-        
-        # Criar token JWT
-        access_token = create_access_token(
-            data={"sub": user_data["username"]},
-            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        )
-        
-        # Retorna token e dados do usuário
-        return {
-            "token": access_token,
-            "user": {
-                "id": user_data.get("id"),
-                "username": user_data.get("username"),
-                "email": user_data.get("email"),
-                "avatar_url": user_data.get("avatar_url"),
-                "role": user_data.get("role", "user")
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Erro no Discord auth: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-        
-        # Verificar se usuário já existe
-        existing_user = await db.users.find_one({
-            "$or": [
-                {"google_id": google_id},
-                {"email": email}
-            ]
+            "$or": [{"google_id": google_id}, {"email": email}]
         }, {"_id": 0})
         
         if existing_user:
             if not existing_user.get("google_id"):
                 await db.users.update_one(
                     {"email": email},
-                    {"$set": {
-                        "google_id": google_id,
-                        "avatar_url": avatar_url
-                    }}
+                    {"$set": {"google_id": google_id, "avatar_url": avatar_url}}
                 )
             user_data = existing_user
         else:
-            # Criar novo usuário
             base_username = email.split('@')[0]
             username = base_username
             counter = 1
@@ -532,16 +396,13 @@ async def discord_auth(data: DiscordAuthRequest):
             
             await db.users.insert_one(user_doc)
             user_data = user_doc
-            
             logger.info(f"✅ Novo usuário via Google: {username} ({email})")
         
-        # Criar token JWT
         access_token = create_access_token(
             data={"sub": user_data["username"]},
             expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         )
         
-        # Redirecionar para frontend
         redirect_url = f"{FRONTEND_URL}/auth/google/success?token={access_token}"
         return RedirectResponse(url=redirect_url)
         
@@ -551,7 +412,74 @@ async def discord_auth(data: DiscordAuthRequest):
         return RedirectResponse(url=error_url)
 
 
-# File routes  # ← CÓDIGO QUE JÁ EXISTE
+# Discord OAuth route
+@api_router.post("/auth/discord")
+async def discord_auth(data: DiscordAuthRequest):
+    try:
+        existing_user = await db.users.find_one({
+            "$or": [{"discord_id": data.discordId}, {"email": data.email}]
+        }, {"_id": 0})
+        
+        if existing_user:
+            await db.users.update_one(
+                {"discord_id": data.discordId},
+                {"$set": {
+                    "username": data.username,
+                    "avatar_url": data.avatar,
+                    "discriminator": data.discriminator,
+                    "email": data.email
+                }}
+            )
+            user_data = existing_user
+            logger.info(f"✅ Login Discord: {data.username}")
+        else:
+            base_username = data.username
+            username = base_username
+            counter = 1
+            
+            while await db.users.find_one({"username": username}):
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            new_user = User(
+                username=username,
+                email=data.email,
+                discord_id=data.discordId,
+                discriminator=data.discriminator,
+                avatar_url=data.avatar,
+                role="user"
+            )
+            
+            user_doc = new_user.model_dump()
+            user_doc["created_at"] = user_doc["created_at"].isoformat()
+            user_doc["password_hash"] = None
+            
+            await db.users.insert_one(user_doc)
+            user_data = user_doc
+            logger.info(f"✅ Novo usuário Discord: {username} ({data.email})")
+        
+        access_token = create_access_token(
+            data={"sub": user_data["username"]},
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        
+        return {
+            "token": access_token,
+            "user": {
+                "id": user_data.get("id"),
+                "username": user_data.get("username"),
+                "email": user_data.get("email"),
+                "avatar_url": user_data.get("avatar_url"),
+                "role": user_data.get("role", "user")
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no Discord auth: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# File routes
 @api_router.post("/files/upload", response_model=FileMetadata)
 async def upload_file(
     file: UploadFile = File(...),
@@ -587,7 +515,6 @@ async def upload_file(
         metadata_doc["password_hash"] = get_password_hash(password)
     
     await db.files.insert_one(metadata_doc)
-    
     logger.info(f"📤 Upload: {file.filename} por {current_user.username}")
     
     return file_metadata
@@ -707,9 +634,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=[
-    "https://biblioteca-sigma-gilt.vercel.app",
-    "http://localhost:3000",  # para testes locais
-],
+        "https://biblioteca-sigma-gilt.vercel.app",
+        "http://localhost:3000",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -719,10 +646,10 @@ app.add_middleware(
 async def shutdown_db_client():
     client.close()
 
+
 # Mount frontend
 try:
     from static_server import mount_frontend
     mount_frontend(app)
 except:
     logger.warning("⚠️ static_server não encontrado")
-    

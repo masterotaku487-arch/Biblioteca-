@@ -5,6 +5,7 @@ import axios from "axios";
 import LoginPage from "@/pages/LoginPage";
 import Dashboard from "@/pages/Dashboard";
 import GoogleCallback from "@/pages/GoogleCallback";
+import DiscordCallback from "@/pages/DiscordCallback"; // NOVO
 import { Toaster } from "@/components/ui/sonner";
 
 // CORREÇÃO CRÍTICA: 
@@ -103,6 +104,11 @@ function App() {
           <Route 
             path="/auth/google/success" 
             element={<GoogleCallback onLogin={handleLogin} />} 
+          />
+          {/* NOVA ROTA DISCORD */}
+          <Route 
+            path="/auth/discord/callback" 
+            element={<DiscordCallback onLogin={handleLogin} />} 
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -2,7 +2,7 @@
 const DISCORD_CLIENT_ID = '1462810121318043721';
 const REDIRECT_URI = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000/auth/discord/callback'
-  : 'https://biblioteca-sigma-gilt.vercel.app/auth/discord/callback';
+  : 'https://biblioteca-sigma-gilt.onrender.com/auth/discord/callback';
 
 // URL de autorização do Discord
 export const getDiscordAuthUrl = () => {

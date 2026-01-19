@@ -101,6 +101,24 @@ class User(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     username: str
+    email: Optional[str] = None
+    google_id: Optional[str] = None
+    discord_id: Optional[str] = None  # ← NOVO
+    discriminator: Optional[str] = None  # ← NOVO
+    avatar_url: Optional[str] = None
+    role: str = "user"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    class DiscordAuthRequest(BaseModel):
+    discordId: str
+    email: str
+    username: str
+    avatar: str
+    discriminator: str
+    
+class User(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    username: str
     email: Optional[str] = None  # ← NOVO
     google_id: Optional[str] = None  # ← NOVO
     avatar_url: Optional[str] = None  # ← NOVO
@@ -395,6 +413,82 @@ async def google_callback(request: Request):
         
         if not google_id or not email:
             raise HTTPException(status_code=400, detail="Invalid user info from Google")
+            # Discord OAuth route - NOVO
+@api_router.post("/auth/discord")
+async def discord_auth(data: DiscordAuthRequest):
+    """Autenticação com Discord"""
+    try:
+        # Busca usuário pelo discord_id
+        existing_user = await db.users.find_one({
+            "$or": [
+                {"discord_id": data.discordId},
+                {"email": data.email}
+            ]
+        }, {"_id": 0})
+        
+        if existing_user:
+            # Atualiza dados do usuário existente
+            await db.users.update_one(
+                {"discord_id": data.discordId},
+                {"$set": {
+                    "username": data.username,
+                    "avatar_url": data.avatar,
+                    "discriminator": data.discriminator,
+                    "email": data.email
+                }}
+            )
+            user_data = existing_user
+            logger.info(f"✅ Login Discord: {data.username}")
+        else:
+            # Criar novo usuário
+            base_username = data.username
+            username = base_username
+            counter = 1
+            
+            # Garante username único
+            while await db.users.find_one({"username": username}):
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            new_user = User(
+                username=username,
+                email=data.email,
+                discord_id=data.discordId,
+                discriminator=data.discriminator,
+                avatar_url=data.avatar,
+                role="user"
+            )
+            
+            user_doc = new_user.model_dump()
+            user_doc["created_at"] = user_doc["created_at"].isoformat()
+            user_doc["password_hash"] = None  # Login social não tem senha
+            
+            await db.users.insert_one(user_doc)
+            user_data = user_doc
+            
+            logger.info(f"✅ Novo usuário Discord: {username} ({data.email})")
+        
+        # Criar token JWT
+        access_token = create_access_token(
+            data={"sub": user_data["username"]},
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        
+        # Retorna token e dados do usuário
+        return {
+            "token": access_token,
+            "user": {
+                "id": user_data.get("id"),
+                "username": user_data.get("username"),
+                "email": user_data.get("email"),
+                "avatar_url": user_data.get("avatar_url"),
+                "role": user_data.get("role", "user")
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no Discord auth: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
         
         # Verificar se usuário já existe
         existing_user = await db.users.find_one({

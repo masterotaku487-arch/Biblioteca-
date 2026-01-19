@@ -624,6 +624,92 @@ async def toggle_chat(data: ChatToggle, current_user: User = Depends(get_admin_u
         upsert=True
     )
     return {"enabled": data.enabled}
+    # WebSocket Chat
+@app.websocket("/ws/chat")
+async def websocket_chat(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.add(websocket)
+    logger.info(f"✅ WebSocket conectado. Total: {len(active_connections)}")
+    
+    try:
+        while True:
+            # Recebe mensagem do cliente
+            data = await websocket.receive_text()
+            message_data = json.loads(data)
+            
+            # Valida se o chat está habilitado
+            settings = await db.settings.find_one({"key": "chat_enabled"})
+            chat_enabled = settings.get("value", False) if settings else False
+            
+            # Busca dados do usuário
+            user = await db.users.find_one(
+                {"username": message_data.get("username")}, 
+                {"_id": 0}
+            )
+            
+            if not user:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "User not found"
+                })
+                continue
+            
+            # Se não for admin e chat desabilitado, retorna erro
+            if not chat_enabled and user.get("role") != "admin":
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Chat is disabled"
+                })
+                continue
+            
+            # Cria mensagem
+            chat_message = ChatMessage(
+                username=message_data.get("username"),
+                message=message_data.get("message"),
+                role=user.get("role", "user")
+            )
+            
+            # Salva no banco
+            message_doc = chat_message.model_dump()
+            message_doc["timestamp"] = message_doc["timestamp"].isoformat()
+            await db.chat_messages.insert_one(message_doc)
+            
+            # Envia para todos os clientes conectados
+            broadcast_data = {
+                "type": "message",
+                "data": {
+                    "id": chat_message.id,
+                    "username": chat_message.username,
+                    "message": chat_message.message,
+                    "role": chat_message.role,
+                    "timestamp": chat_message.timestamp.isoformat()
+                }
+            }
+            
+            # Broadcast para todos
+            disconnected = set()
+            for connection in active_connections:
+                try:
+                    await connection.send_json(broadcast_data)
+                except Exception as e:
+                    logger.error(f"❌ Erro ao enviar mensagem: {e}")
+                    disconnected.add(connection)
+            
+            # Remove conexões mortas
+            active_connections.difference_update(disconnected)
+            
+            logger.info(f"💬 Mensagem de {chat_message.username}: {chat_message.message[:50]}")
+            
+    except WebSocketDisconnect:
+        active_connections.discard(websocket)
+        logger.info(f"❌ WebSocket desconectado. Total: {len(active_connections)}")
+    except Exception as e:
+        logger.error(f"❌ Erro no WebSocket: {e}")
+        active_connections.discard(websocket)
+        try:
+            await websocket.close()
+        except:
+            pass
 
 
 # Include router

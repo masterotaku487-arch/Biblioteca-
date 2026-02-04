@@ -3,16 +3,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { API } from "@/App";
-import { Upload, Download, Trash2, File, Image, Video, Music, FileText, Search, Lock, AlertCircle } from "lucide-react";
+import { Upload, Download, Trash2, File, Image, Video, Music, FileText, Search, Lock, AlertCircle, Eye } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
+import FilePreview from "@/components/FilePreview";
 
-const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin }) => {
+const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin, teams = [], theme }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadFiles, setUploadFiles] = useState([]);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
   const [passwordModalFile, setPasswordModalFile] = useState(null);
   const [filePassword, setFilePassword] = useState("");
   const [verifying, setVerifying] = useState(false);
@@ -36,8 +41,9 @@ const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin })
       const input = document.getElementById(`file-password-${index}`);
       return input ? input.value : "";
     });
-    onUpload(uploadFiles, passwords);
+    onUpload(uploadFiles, passwords, selectedTeam);
     setUploadFiles([]);
+    setSelectedTeam(null);
     setShowPasswordModal(false);
   };
 
@@ -152,12 +158,33 @@ const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin })
       <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
         <DialogContent data-testid="upload-password-modal">
           <DialogHeader>
-            <DialogTitle>Proteger Arquivos com Senha (Opcional)</DialogTitle>
+            <DialogTitle>Configurar Upload</DialogTitle>
             <DialogDescription>
-              Adicione senhas aos seus arquivos para maior segurança. Deixe em branco para não proteger.
+              Configure senhas e escolha onde fazer o upload
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 max-h-[400px] overflow-y-auto">
+            {/* Team Selection */}
+            {teams && teams.length > 0 && (
+              <div className="space-y-2 pb-4 border-b">
+                <Label>Enviar para (Opcional)</Label>
+                <Select value={selectedTeam || "personal"} onValueChange={(val) => setSelectedTeam(val === "personal" ? null : val)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Biblioteca pessoal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="personal">📁 Minha Biblioteca Pessoal</SelectItem>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        👥 {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
+            {/* Passwords */}
             {uploadFiles.map((file, index) => (
               <div key={index} className="space-y-2">
                 <Label htmlFor={`file-password-${index}`} className="text-sm font-medium">
@@ -175,6 +202,7 @@ const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin })
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setUploadFiles([]);
+              setSelectedTeam(null);
               setShowPasswordModal(false);
             }}>
               Cancelar
@@ -285,6 +313,19 @@ const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin })
                 </div>
                 <div className="flex gap-2">
                   <Button
+                    data-testid={`preview-button-${file.id}`}
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setPreviewFile(file);
+                      setShowPreviewModal(true);
+                    }}
+                  >
+                    <Eye className="w-4 h-4 mr-1" />
+                    Preview
+                  </Button>
+                  <Button
                     data-testid={`download-button-${file.id}`}
                     size="sm"
                     variant="outline"
@@ -310,6 +351,16 @@ const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin })
           ))}
         </div>
       )}
+
+      {/* File Preview Modal */}
+      <FilePreview
+        file={previewFile}
+        open={showPreviewModal}
+        onClose={() => {
+          setShowPreviewModal(false);
+          setPreviewFile(null);
+        }}
+      />
     </div>
   );
 };

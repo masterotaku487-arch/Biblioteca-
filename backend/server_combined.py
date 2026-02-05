@@ -38,7 +38,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 # Storage configuration
-STORAGE_MODE = os.environ.get("STORAGE_MODE", "local")
+STORAGE_MODE = os.environ.get("STORAGE_MODE", "supabase")
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/app/uploads"))
 UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 

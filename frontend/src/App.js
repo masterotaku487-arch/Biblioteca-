@@ -7,6 +7,9 @@ import Dashboard from "@/pages/Dashboard";
 import GoogleCallback from "@/pages/GoogleCallback";
 import DiscordCallback from "@/pages/DiscordCallback"; // NOVO
 import { Toaster } from "@/components/ui/sonner";
+import TermsOfService from "@/pages/TermsOfService";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+
 
 // CORREÇÃO CRÍTICA: 
 // 1. O código foi atualizado para usar REACT_APP_API_URL, que é a variável definida no Vercel.
@@ -111,6 +114,18 @@ function App() {
             element={<DiscordCallback onLogin={handleLogin} />} 
           />
           <Route path="*" element={<Navigate to="/" replace />} />
+              <Routes>
+  {/* Rotas existentes */}
+  <Route path="/login" element={...} />
+  <Route path="/" element={...} />
+  <Route path="/auth/google/success" element={...} />
+  <Route path="/auth/discord/callback" element={...} />
+  
+  {/* NOVAS ROTAS - Adicione aqui */}
+  <Route path="/terms" element={<TermsOfService />} />
+  <Route path="/privacy" element={<PrivacyPolicy />} />
+  
+  <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </div>

@@ -114,7 +114,6 @@ function App() {
             element={<DiscordCallback onLogin={handleLogin} />} 
           />
           <Route path="*" element={<Navigate to="/" replace />} />
-              <Routes>
   {/* Rotas existentes */}
   <Route path="/login" element={...} />
   <Route path="/" element={...} />

@@ -301,6 +301,15 @@ const LoginPage = ({ onLogin }) => {
         </Card>
       </div>
     </div>
+<div className="mt-6 text-center text-sm text-gray-600">
+  <a href="/terms" className="hover:text-purple-600 transition-colors">
+    Termos de Uso
+  </a>
+  <span className="mx-2">•</span>
+  <a href="/privacy" className="hover:text-purple-600 transition-colors">
+    Política de Privacidade
+  </a>
+</div>
   );
 };
 

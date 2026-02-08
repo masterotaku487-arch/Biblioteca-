@@ -238,7 +238,7 @@ const Dashboard = ({ user, onLogout }) => {
   );
 };
 
-export default Dashboard;import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import FileLibrary from "@/components/FileLibrary";

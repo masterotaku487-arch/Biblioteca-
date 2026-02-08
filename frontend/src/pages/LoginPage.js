@@ -8,14 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Lock, User, LogIn, UserPlus } from "lucide-react";
-import { loginWithDiscord } from "@/utils/discordAuth"; // NOVO
+import { loginWithDiscord } from "@/utils/discordAuth";
 
 const LoginPage = ({ onLogin }) => {
   const [loginData, setLoginData] = useState({ username: "", password: "" });
   const [registerData, setRegisterData] = useState({ username: "", password: "" });
   const [loading, setLoading] = useState(false);
 
-  // Login tradicional
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -31,7 +30,6 @@ const LoginPage = ({ onLogin }) => {
     }
   };
 
-  // Registro tradicional
   const handleRegister = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -47,7 +45,6 @@ const LoginPage = ({ onLogin }) => {
     }
   };
 
-  // Login com Google
   const handleGoogleLogin = () => {
     const backendUrl = API;
     const googleAuthUrl = `${backendUrl}/auth/google/login`;
@@ -128,9 +125,7 @@ const LoginPage = ({ onLogin }) => {
               </TabsList>
 
               <TabsContent value="login">
-                {/* BOTÕES DE LOGIN SOCIAL */}
                 <div className="space-y-3 mb-4">
-                  {/* Google */}
                   <Button
                     onClick={handleGoogleLogin}
                     type="button"
@@ -146,7 +141,6 @@ const LoginPage = ({ onLogin }) => {
                     <span className="font-medium text-gray-700">Continuar com Google</span>
                   </Button>
 
-                  {/* Discord - NOVO */}
                   <Button
                     onClick={loginWithDiscord}
                     type="button"
@@ -160,14 +154,12 @@ const LoginPage = ({ onLogin }) => {
                   </Button>
                 </div>
                 
-                {/* Divisor "OU" */}
                 <div className="flex items-center my-6">
                   <div className="flex-1 border-t border-gray-300"></div>
                   <span className="px-4 text-sm text-gray-500 font-medium">OU</span>
                   <div className="flex-1 border-t border-gray-300"></div>
                 </div>
 
-                {/* Formulário tradicional */}
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="login-username">Usuário</Label>
@@ -213,9 +205,7 @@ const LoginPage = ({ onLogin }) => {
               </TabsContent>
 
               <TabsContent value="register">
-                {/* BOTÕES DE REGISTRO SOCIAL */}
                 <div className="space-y-3 mb-4">
-                  {/* Google */}
                   <Button
                     onClick={handleGoogleLogin}
                     type="button"
@@ -231,7 +221,6 @@ const LoginPage = ({ onLogin }) => {
                     <span className="font-medium text-gray-700">Registrar com Google</span>
                   </Button>
 
-                  {/* Discord - NOVO */}
                   <Button
                     onClick={loginWithDiscord}
                     type="button"
@@ -245,14 +234,12 @@ const LoginPage = ({ onLogin }) => {
                   </Button>
                 </div>
                 
-                {/* Divisor "OU" */}
                 <div className="flex items-center my-6">
                   <div className="flex-1 border-t border-gray-300"></div>
                   <span className="px-4 text-sm text-gray-500 font-medium">OU</span>
                   <div className="flex-1 border-t border-gray-300"></div>
                 </div>
 
-                {/* Formulário tradicional */}
                 <form onSubmit={handleRegister} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="register-username">Usuário</Label>
@@ -297,19 +284,20 @@ const LoginPage = ({ onLogin }) => {
                 </form>
               </TabsContent>
             </Tabs>
+
+            <div className="mt-6 text-center text-sm text-gray-600">
+              <a href="/terms" className="hover:text-purple-600 transition-colors">
+                Termos de Uso
+              </a>
+              <span className="mx-2">•</span>
+              <a href="/privacy" className="hover:text-purple-600 transition-colors">
+                Política de Privacidade
+              </a>
+            </div>
           </CardContent>
         </Card>
       </div>
     </div>
-<div className="mt-6 text-center text-sm text-gray-600">
-  <a href="/terms" className="hover:text-purple-600 transition-colors">
-    Termos de Uso
-  </a>
-  <span className="mx-2">•</span>
-  <a href="/privacy" className="hover:text-purple-600 transition-colors">
-    Política de Privacidade
-  </a>
-</div>
   );
 };
 

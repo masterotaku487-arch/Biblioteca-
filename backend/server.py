@@ -438,63 +438,39 @@ async def discord_auth(data: DiscordAuthRequest):
         logger.error(f"Discord auth error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Teams routes
-@api_router.post("/teams", response_model=Team)
-async def create_team(team_data: TeamCreate, current_user: User = Depends(get_current_user)):
-    team = Team(name=team_data.name, description=team_data.description, created_by=current_user.username, members=[current_user.username])
-    team_doc = team.model_dump()
-    team_doc["created_at"] = team_doc["created_at"].isoformat()
-    await db.teams.insert_one(team_doc)
-    return team
-
-@api_router.get("/teams", response_model=List[Team])
-async def get_teams(current_user: User = Depends(get_current_user)):
+# 1. Ajuste a rota de listar times para bater com o frontend
+@api_router.get("/teams/my-teams", response_model=List[Team])
+async def get_my_teams(current_user: User = Depends(get_current_user)):
+    # Busca times onde o usuário é membro
     teams = await db.teams.find({"members": current_user.username}, {"_id": 0}).to_list(1000)
-    for team in teams:
-        if isinstance(team['created_at'], str):
-            team['created_at'] = datetime.fromisoformat(team['created_at'])
     return teams
 
-@api_router.post("/teams/{team_id}/members")
-async def add_team_member(team_id: str, data: TeamAddMember, current_user: User = Depends(get_current_user)):
-    team = await db.teams.find_one({"id": team_id}, {"_id": 0})
-    if not team or current_user.username not in team["members"]:
-        raise HTTPException(status_code=403)
-    
-    if not await db.users.find_one({"username": data.username}):
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    if data.username in team["members"]:
-        raise HTTPException(status_code=400, detail="User already in team")
-    
-    await db.teams.update_one({"id": team_id}, {"$push": {"members": data.username}})
-    return {"message": f"{data.username} added to team"}
+# 2. ADICIONE esta rota que está faltando e causando o erro 405
+@api_router.get("/teams/invites")
+async def get_my_invites(current_user: User = Depends(get_current_user)):
+    # Busca convites pendentes para o usuário
+    invites = await db.team_invites.find({
+        "invitee_username": current_user.username, 
+        "status": "pending"
+    }, {"_id": 0}).to_list(100)
+    return invites
 
-@api_router.delete("/teams/{team_id}/members/{username}")
-async def remove_team_member(team_id: str, username: str, current_user: User = Depends(get_current_user)):
-    team = await db.teams.find_one({"id": team_id}, {"_id": 0})
-    if not team:
-        raise HTTPException(status_code=404)
+# 3. Adicione também a rota para responder aos convites (necessária para o TeamsPanelm)
+@api_router.post("/teams/invites/{invite_id}/respond")
+async def respond_to_invite(invite_id: str, data: dict, current_user: User = Depends(get_current_user)):
+    invite = await db.team_invites.find_one({"id": invite_id})
+    if not invite or invite["invitee_username"] != current_user.username:
+        raise HTTPException(status_code=404, detail="Invite not found")
     
-    if current_user.username != team["created_by"] and current_user.username != username:
-        raise HTTPException(status_code=403)
-    
-    await db.teams.update_one({"id": team_id}, {"$pull": {"members": username}})
-    return {"message": "Member removed"}
-
-@api_router.delete("/teams/{team_id}")
-async def delete_team(team_id: str, current_user: User = Depends(get_current_user)):
-    team = await db.teams.find_one({"id": team_id}, {"_id": 0})
-    if not team:
-        raise HTTPException(status_code=404)
-    
-    if current_user.username != team["created_by"]:
-        raise HTTPException(status_code=403, detail="Only team owner can delete")
-    
-    await db.teams.delete_one({"id": team_id})
-    await db.files.update_many({"team_id": team_id}, {"$set": {"team_id": None}})
-    return {"message": "Team deleted"}
-
+    action = data.get("action")
+    if action == "accept":
+        await db.teams.update_one({"id": invite["team_id"]}, {"$push": {"members": current_user.username}})
+        await db.team_invites.update_one({"id": invite_id}, {"$set": {"status": "accepted"}})
+        return {"message": "Aceito"}
+    else:
+        await db.team_invites.update_one({"id": invite_id}, {"$set": {"status": "rejected"}})
+        return {"message": "Recusado"}
+                                         
 # File routes
 @api_router.post("/files/upload", response_model=FileMetadata)
 async def upload_file(

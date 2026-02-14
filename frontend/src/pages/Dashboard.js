@@ -20,7 +20,8 @@ const Dashboard = ({ user, onLogout }) => {
   const [teams, setTeams] = useState([]);
   const [currentTheme, setCurrentTheme] = useState(getSeasonalTheme());
   const isAdmin = user?.role === "admin";
-
+  const showChatTab = isAdmin || chatEnabled;
+  
   useEffect(() => {
     loadFiles();
     checkChatEnabled();

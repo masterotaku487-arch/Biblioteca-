@@ -437,40 +437,44 @@ async def discord_auth(data: DiscordAuthRequest):
     except Exception as e:
         logger.error(f"Discord auth error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-# 1. Ajuste a rota de listar times para bater com o frontend
-@api_router.get("/teams/my-teams", response_model=List[Team])
+        
+# 1. Rota para Listar os Times (Ajustada para /my-teams)
+@api_router.get("/teams/my-teams")
 async def get_my_teams(current_user: User = Depends(get_current_user)):
-    # Busca times onde o usuário é membro
+    # Busca times onde o usuário é membro ou dono
     teams = await db.teams.find({"members": current_user.username}, {"_id": 0}).to_list(1000)
+    # Garante que os campos de data não quebrem o JSON
+    for team in teams:
+        if 'created_at' in team and not isinstance(team['created_at'], str):
+            team['created_at'] = team['created_at'].isoformat()
     return teams
 
-# 2. ADICIONE esta rota que está faltando e causando o erro 405
+# 2. Rota para Listar Convites (A que faltava e causava erro)
 @api_router.get("/teams/invites")
 async def get_my_invites(current_user: User = Depends(get_current_user)):
-    # Busca convites pendentes para o usuário
     invites = await db.team_invites.find({
         "invitee_username": current_user.username, 
         "status": "pending"
     }, {"_id": 0}).to_list(100)
     return invites
 
-# 3. Adicione também a rota para responder aos convites (necessária para o TeamsPanelm)
-@api_router.post("/teams/invites/{invite_id}/respond")
-async def respond_to_invite(invite_id: str, data: dict, current_user: User = Depends(get_current_user)):
-    invite = await db.team_invites.find_one({"id": invite_id})
-    if not invite or invite["invitee_username"] != current_user.username:
-        raise HTTPException(status_code=404, detail="Invite not found")
+# 3. Rota para Enviar Convites (Usada pelo botão "Adicionar Membro")
+@api_router.post("/teams/invites")
+async def send_team_invite(data: dict, current_user: User = Depends(get_current_user)):
+    # data deve conter 'team_id' e 'username' (do convidado)
+    invite_doc = {
+        "id": str(uuid.uuid4()),
+        "team_id": data.get("team_id"),
+        "team_name": data.get("team_name"), # Opcional, para exibição
+        "inviter_username": current_user.username,
+        "invitee_username": data.get("username"),
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.team_invites.insert_one(invite_doc)
+    return {"message": "Convite enviado!"}
     
-    action = data.get("action")
-    if action == "accept":
-        await db.teams.update_one({"id": invite["team_id"]}, {"$push": {"members": current_user.username}})
-        await db.team_invites.update_one({"id": invite_id}, {"$set": {"status": "accepted"}})
-        return {"message": "Aceito"}
-    else:
-        await db.team_invites.update_one({"id": invite_id}, {"$set": {"status": "rejected"}})
-        return {"message": "Recusado"}
-                                         
+
 # File routes
 @api_router.post("/files/upload", response_model=FileMetadata)
 async def upload_file(

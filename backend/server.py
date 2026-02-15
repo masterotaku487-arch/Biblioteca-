@@ -492,16 +492,7 @@ async def discord_auth(data: DiscordAuthRequest):
     except Exception as e:
         logger.error(f"Discord auth error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-# Teams routes
-@api_router.post("/teams", response_model=Team)
-async def create_team(team_data: TeamCreate, current_user: User = Depends(get_current_user)):
-    team = Team(name=team_data.name, description=team_data.description, created_by=current_user.username, members=[current_user.username])
-    team_doc = team.model_dump()
-    team_doc["created_at"] = team_doc["created_at"].isoformat()
-    await db.teams.insert_one(team_doc)
-    return team
-
+  # Teams routes
 @api_router.get("/teams/my-teams", response_model=List[Team])
 async def get_my_teams(current_user: User = Depends(get_current_user)):
     """Lista todos os times do usuário logado"""
@@ -510,15 +501,29 @@ async def get_my_teams(current_user: User = Depends(get_current_user)):
     for team in teams:
         if 'created_at' in team and isinstance(team['created_at'], datetime):
             team['created_at'] = team['created_at'].isoformat()
-        elif 'created_at' in team and isinstance(team['created_at'], str):
-            # Já está como string, deixar como está
-            pass
     return teams
 
 @api_router.get("/teams", response_model=List[Team])
 async def get_teams_alias(current_user: User = Depends(get_current_user)):
     """Alias para /teams/my-teams - compatibilidade com frontend"""
     return await get_my_teams(current_user)
+
+@api_router.get("/teams/invites")
+async def get_my_invites(current_user: User = Depends(get_current_user)):
+    """Lista convites pendentes - NECESSÁRIO PARA EVITAR ERRO 405"""
+    invites = await db.team_invites.find({"invitee_username": current_user.username, "status": "pending"}, {"_id": 0}).to_list(100)
+    for invite in invites:
+        if 'created_at' in invite and isinstance(invite['created_at'], datetime):
+            invite['created_at'] = invite['created_at'].isoformat()
+    return invites
+
+@api_router.post("/teams", response_model=Team)
+async def create_team(team_data: TeamCreate, current_user: User = Depends(get_current_user)):
+    team = Team(name=team_data.name, description=team_data.description, created_by=current_user.username, members=[current_user.username])
+    team_doc = team.model_dump()
+    team_doc["created_at"] = team_doc["created_at"].isoformat()
+    await db.teams.insert_one(team_doc)
+    return team
 
 @api_router.post("/teams/{team_id}/members")
 async def add_team_member(team_id: str, data: TeamAddMember, current_user: User = Depends(get_current_user)):
@@ -558,7 +563,7 @@ async def delete_team(team_id: str, current_user: User = Depends(get_current_use
     
     await db.teams.delete_one({"id": team_id})
     await db.files.update_many({"team_id": team_id}, {"$set": {"team_id": None}})
-    return {"message": "Team deleted"}
+    return {"message": "Team deleted"}      
 
 # File routes
 @api_router.post("/files/upload", response_model=FileMetadata)

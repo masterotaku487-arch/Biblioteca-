@@ -71,7 +71,7 @@ const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin, t
       if (response.data.valid) {
         await downloadFile(passwordModalFile);
         setPasswordModalFile(null);
-        setFilePassword("");
+        setFilePassword("")q
       } else {
         toast.error("Senha incorreta!");
       }
@@ -135,7 +135,7 @@ const FileLibrary = ({ files, loading, uploading, onUpload, onDelete, isAdmin, t
             <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             <p className="text-lg font-medium text-gray-700 mb-2">Clique para fazer upload</p>
             <p className="text-sm text-gray-500">Ou arraste e solte seus arquivos aqui</p>
-            <p className="text-xs text-gray-400 mt-2">Arquivos privados - apenas você e o admin podem ver</p>
+            <p className="text-xs text-gray-400 mt-2">Arquivos privados - apenas você pode ver</p>
             <input
               ref={fileInputRef}
               type="file"

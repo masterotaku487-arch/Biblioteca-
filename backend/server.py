@@ -1218,3 +1218,53 @@ async def respond_to_invite(invite_id: str, data: dict, current_user: User = Dep
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+# ===================================================================
+# ✨ CÓDIGO NOVO - AUTO-START DO SERVER LIVE ✨
+# ===================================================================
+import subprocess
+import atexit
+import sys
+
+live_server_process = None
+
+def start_live_server():
+    """Inicia servidor Live automaticamente"""
+    global live_server_process
+    try:
+        logger.info("🚀 Iniciando servidor Live na porta 8001...")
+        live_server_process = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "server_live:app", 
+             "--host", "0.0.0.0", "--port", "8001"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        logger.info("✅ Servidor Live iniciado!")
+        logger.info("📡 WebSocket: ws://localhost:8001/ws/live/{team_id}/{file_id}")
+    except Exception as e:
+        logger.error(f"❌ Erro ao iniciar servidor Live: {e}")
+
+def stop_live_server():
+    """Para servidor Live quando principal é encerrado"""
+    global live_server_process
+    if live_server_process:
+        logger.info("🛑 Parando servidor Live...")
+        live_server_process.terminate()
+        try:
+            live_server_process.wait(timeout=5)
+            logger.info("✅ Servidor Live parado")
+        except:
+            live_server_process.kill()
+            logger.info("⚠️ Servidor Live forçado a parar")
+
+atexit.register(stop_live_server)
+
+@app.on_event("startup")
+async def startup_live():
+    """Startup: inicia servidor Live"""
+    start_live_server()
+# ===================================================================
+# FIM DO CÓDIGO NOVO
+# ===================================================================
+
+# FIM DO ARQUIVO    
